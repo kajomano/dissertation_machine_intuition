@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="10in"
+   height="1.9in"
+   viewBox="0 0 254 48.260001"
+   version="1.1"
+   id="svg8"
+   inkscape:version="0.92.4 (5da689c313, 2019-01-14)"
+   sodipodi:docname="l11.svg">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.7"
+     inkscape:cx="709.4121"
+     inkscape:cy="184.9614"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="in"
+     inkscape:window-width="1836"
+     inkscape:window-height="1026"
+     inkscape:window-x="590"
+     inkscape:window-y="188"
+     inkscape:window-maximized="0" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-248.73998)">
+    <image
+       sodipodi:absref="C:\Users\mkajo\Home\dissertation_mi\figures\02_deep_learning\feature_vis\l11_01.png"
+       xlink:href="l11_01.png"
+       width="46.848633"
+       height="47.110359"
+       preserveAspectRatio="none"
+       id="image4528"
+       x="0.52916664"
+       y="249.3148" />
+    <image
+       sodipodi:absref="C:\Users\mkajo\Home\dissertation_mi\figures\02_deep_learning\feature_vis\l11_02.png"
+       xlink:href="l11_02.png"
+       width="46.979492"
+       height="47.110359"
+       preserveAspectRatio="none"
+       id="image4539"
+       x="51.954281"
+       y="249.3148" />
+    <image
+       sodipodi:absref="C:\Users\mkajo\Home\dissertation_mi\figures\02_deep_learning\feature_vis\l11_03.png"
+       xlink:href="l11_03.png"
+       width="46.979492"
+       height="47.110359"
+       preserveAspectRatio="none"
+       id="image4550"
+       x="103.44482"
+       y="249.3148" />
+    <image
+       sodipodi:absref="C:\Users\mkajo\Home\dissertation_mi\figures\02_deep_learning\feature_vis\l11_04.png"
+       xlink:href="l11_04.png"
+       width="46.979492"
+       height="46.979492"
+       preserveAspectRatio="none"
+       id="image4561"
+       x="154.93536"
+       y="249.38023" />
+    <image
+       sodipodi:absref="C:\Users\mkajo\Home\dissertation_mi\figures\02_deep_learning\feature_vis\l11_05.png"
+       xlink:href="l11_05.png"
+       width="47.110359"
+       height="47.110359"
+       preserveAspectRatio="none"
+       id="image4572"
+       x="206.36047"
+       y="249.3148" />
+  </g>
+</svg>

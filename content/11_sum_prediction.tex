@@ -1,0 +1,66 @@
+\chapter{Summary of Research on Prediction}
+	\label{cha:sum_prediction}
+	
+	This part of the thesis has discussed the machine intuition process of prediction: act of intelligent, long-term forecasting of future behavior of an entity, based strongly on contextual information such as historical data from the entity and similar entities, as well as information from the entity's surroundings.
+	Our focus is on long-term prediction, where the predicted timeframe is considerably longer than the rate of change in the system, so the prediction entails a handful of ``steps'' into the future.
+	Prediction can be undertaken by neural nets, which take as input a time-series of features, containing measurements from a certain point in the past up to the immediate present.
+	The output of the neural net is one or more future timesteps, not necessarily containing the same features as the input.
+	The predictor can be trained on datasets recorded in the past, where the ``future'' observations are already known.
+	
+	Both works presented here focused on the long-term prediction of the radio quality for individual users, with which preemptive radio reconfigurations can be undertaken, in order to increase reliability and reduce service interruption time.
+	First, we have applied long-term prediction to preemptively trigger handovers, with the goal of reducing \acp{RLF} and ping-pong handovers stemming from too early or too late handovers.
+	The predictor in this work was an \ac{LSTM} neural net, outputting discrete probabilities, predicting which serving cell is the best for the user.
+	While the predictor worked reasonably well, the output was quite noisy.
+	To suppress superfluous handovers triggered by this noise, we used an automatically adjusted threshold as the minimum probability which was allowed to trigger handovers.
+	The threshold adjustment algorithm is called \ac{DCT}.
+	With \ac{DCT} in place, the predictive handover mechanism produced a significant decrease in number of falsely triggered handovers, improving on the reliability considerably.	
+	
+	Radio quality is subject to rapid changes -- a phenomenon called fading -- caused by minute movements of objects along the radio propagation paths and other environmental factors, resulting in seemingly random variance in the attenuation and phase characteristics of the radio channel.
+	Behind this variance induced by fading, the radio quality is mostly governed by the user's location.
+	While fading is unpredictable, the movement of users -- human behavior -- is often quite predictable, especially as pedestrians and vehicles are constrained to move on roads and sidewalks, with strict rules governing their movement.
+	In our second work, we have tried to exploit this, by creating a radio \ac{QoS} predictor split into two components: 1) an \ac{MPP} module, predicting user mobility, and 2) a digital twin, mapping radio \ac{QoS} to user location.
+	In this work, the \ac{MPP} was implemented as a $1$D \ac{CNN}, which proved to be effective in predicting user movement even in the long-term ($40$ seconds into the future).
+	The digital twin modeled the harbor of the city of Hamburg, where the movement of barges was predicted, and using this prediction, radio beams were dynamically adapted to avoid \acp{RLF} in low signal quality areas.
+	The concept was made into a demonstrator, which we call \ac{PLANAR}.
+	\ac{PLANAR} was able to avoid most of the \acp{RLF} in the harbor, showing that such a smart radio system is able to significantly increase the reliability of mobile networks.	
+	Lastly, I discussed a detail of location-based prediction -- privacy -- which applies to other \ac{DL}-based network automation, and could pose as a roadblocks before such technology can be widely adopted.
+	To provide a solution for the specific case of user mobility prediction, we have introduced the \ac{PACHO} concept, which moves the model inference into the \ac{UE}, thus preserving user privacy.
+	
+	\section{Assessment of Feasibility (A3.1)}
+	
+		Prediction can be realized with \ac{DNN} architectures that are capable of modeling temporal relations in the data: \acp{LSTM} or \acp{CNN}.
+		\acp{LSTM} are an obvious choice for this task, as they were originally conceived for \ac{NLP} tasks such as translation, processing a sequence of words or letters, and outputting another sequence.
+		As the name implies, a key feature in \acp{LSTM} is the long- and short-term memory: \acp{LSTM} are capable of recalling inputs long past in the sequence, theoretically having no limit on how far back this memorization can go.
+		However, I question whether there is a need for such long-term memory for mobile networks.
+		While long-term recall is important for languages, because a word many sentences before could decide what word to use in the current sentence, similar cause and effect connections seldom exist in mobile networks.
+		Especially in the radio quality prediction use cases we have discussed, the predicted values will generally not depend on values measured minutes ago, be it the radio quality, the then current serving cell, or the user's location.
+		In my experience, \acp{LSTM} take longer to train, require careful tuning, and underperform their simpler, non-recurrent counterpart: $1$-dimensional \acp{CNN}.	
+		$1$D \acp{CNN} can process sequences by convolving in the time dimension.
+		This allows them to detect similar patterns across the whole sequence, thus be insensitive to exact temporal locations -- as an \ac{FC} net would be -- and to only pay attention to the relative locations of important patterns.
+		If the input sequence contains timesteps far-enough into the past, \acp{CNN} outperform \acp{LSTM} in the prediction tasks we have undertaken, while also taking a shorter time to train, and are not as sensitive to hyperparameters.
+		
+	\section{Assessment of Practicality (A3.2)}
+		
+		Contrary to previously discussed quantization and clustering techniques, prediction models are exclusively trained offline, thus, training speed is not a concern in this evaluation. 
+		Generally, \acp{DNN} are practical for inference in network automation tasks, however, care must be taken to assure that the inference can run at a frequency that is required for the specific task.
+		Factors such as communication delay, preprocessing or data migration to the hardware accelerator (\ac{GPU}) can add up to an overhead which multiplies the overall inference time of a pure \ac{DNN} forward pass.
+		Our work involved predictions every few seconds: on this granularity, larger \acp{DNN} can still generate predictions at a sufficient rate if there is adequate hardware acceleration.
+		I think a few seconds is generally the lowest frequency for which \ac{DL}-based predictions are still practical.
+		In the case of even more frequent inference -- such as radio or cloud resource scheduling tasks -- the use of \ac{DL}-based prediction becomes impractical, while less frequent, large-timescale problems on an hourly granularity and up -- such as usage prediction for network planning -- can generally be run without any concern for inference time.
+		
+		User \ac{QoS} prediction models can be run for multiple users at a time (batched processing), so the increase in users processed does not necessarily equate to a linear increase in inference time.
+		This makes these algorithms scale well with the number of users served, not requiring exorbitant processing power for a large amount of users.
+		However, it is possible that a model which is capable of processing a few users at a time falls below the required inference frequency if the user numbers multiply, in which case a second instance of the same model -- run on a different hardware resource -- must be used.
+		While \ac{DL}-based prediction models do not require excessive hardware resources, \ac{DNN} inference is generally costly, so features that require prediction -- such as \ac{URLLC} -- will probably only be available to select users, and not to the everyday consumer.
+				
+	\section{Assessment of Applicability (A3.3)}
+	
+		Long-term prediction is possible for problems, where the scope of the input data can encompass most of the important (latent) variables, which govern the behavior of predicted entity in question.		
+		\ac{QoS} prediction almost does not qualify for this: fading can unpredictably change \ac{QoS} to an extent that invalidates any prediction.
+		Fortunately, modern \ac{OFDM} and \ac{MIMO} technologies can effectively combat fading, thus validate the use of predictive models in this setting.
+		As we have seen, user mobility -- the other main cause of \ac{QoS} changes -- is predictable, and can be extended with complex modeling of the radio environment, such as digital twins, to predict \ac{QoS} quite precisely.
+				
+		Long-term predictions allow for reconfigurations which take time, such as handover preparation, or allow for the testing of dynamic changes before they are deployed into the real network.
+		For the latter case, digital twins serve an irreplaceable role: they function as a sandbox, where multiple parameter iterations can be tried, and provide up-to-date predictions even in the case of a reconfiguration being planned, but not yet deployed into the network.
+		These predictive techniques make the network robust, adaptive and reliable, upon which future use cases can be built, realizing the promise of a \ac{DL}-based cognitive network automation.
+	

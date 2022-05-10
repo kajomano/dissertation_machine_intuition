@@ -1,0 +1,192 @@
+\chapter{Conclusion and Outlook}
+	\label{cha:conclusion}
+
+	Future \acp{CAN} will require algorithms capable of automating even the most complex cognitive processes of human reasoning.
+	State-of-the-art \ac{DL} algorithms have the potential to realize this automation, however, these algorithms are mostly developed for other application domains.
+	Cognitive network automation requires models that are capable of learning in an unsupervised manner, inferring insight from data without the help of extensive human supervision, such as manually labeled observations.
+	These tasks generally necessitate strong cognitive capabilities to be able to extract latent information from the data, essentially a sort of intuition realized in algorithmic form.
+	The focus of this thesis are such machine intuition algorithms: unsupervised \ac{DL} algorithms, applied to mobile network automation use cases.
+	
+	I have identified four machine intuition processes: exemplification, association, prediction and machine confidence.
+	The thesis' organization followed these processes, with a major part dedicated to each.
+	Each intuitive process was discussed by introducing one or more publications to which I contributed in a significant capacity.
+	The publications examine cognitive network automation use cases, and detail \ac{DL} algorithms which can be used to realize them.
+	The \ac{DL} algorithms are based on known methods, but required modifications and/or extensions to adopt them to the specific network automation use case:
+	\begin{itemize}
+		\item
+			\textbf{Exemplification} was discussed in the context of facilitating communication between \acp{CF} in a \ac{CAN}.
+			Exemplification was implemented by using a combination of \acp{AE} and quantization algorithms, in order to define network states as a common ``language'', which can be referenced by \acp{CF} in their communication.
+			
+		\item
+			\textbf{Association} was discussed in the context of cell and user clustering, with which anomaly detection or other classification-like tasks can be undertaken without the need for labeled data.
+			For this, deep \acp{AE} were used with special criteria to shape the encoding into a clustering-friendly representation.
+			
+		\item
+			\textbf{Prediction} was discussed in the context of increasing the reliability of the radio communication, where prediction can be used to preemptively trigger handovers or change beam configurations to maintain a good \ac{QoS} for the user.
+			The prediction of \ac{QoS} was realized using sequence-processing capable \acp{DNN}: an \ac{LSTM} for direct prediction, and a $1$D \ac{CNN} to predict user mobility, working together with a digital twin.
+			
+		\item
+			\textbf{Confidence} was discussed in the context of increasing \ac{DNN}-based \ac{CF} robustness against corrupted input information.
+			In this research, we used $1$D \acp{CNN} extended with a special input and training procedure, both to separately impute data and to integrate the imputation into an \ac{CF} undertaking user classification.
+	\end{itemize}
+	
+	Every part of the thesis was concluded in a summary, which assessed the feasibility, practicality and applicability of each machine learning process in a network automation setting.
+	Furthermore, every part contained a discussion which relates to the larger topic of the use of \ac{DL} in mobile networks: the need for specialized hardware for efficient massive parallelization, the pitfalls in designing understandable \ac{DL} algorithms, the potentially negative role standardization plays for \ac{DL} adoption in mobile networks, and the importance of preserving user privacy when using \ac{DL} models.	
+	In this concluding chapter, I would like to give a final, overall assessment on machine intuition, as well as further remarks on the use of \ac{DL} in mobile networks, and my outlook on the future for these techniques.	
+
+	\section{Machine Intuition}
+	
+		\subsection{Increasing Cognitive Power for CAN (A5.1)}
+		
+			In the introduction of this thesis, I have argued that unsupervised learning is a conceptually harder task than supervised learning, thus, if achieved, would mean an increase in cognitive capabilities, perhaps a step towards true \ac{AI}.
+			Unsupervised learning requires not only the application of learned rules -- which is realized in supervised learning -- but the analysis of data and the identification of relationships within it, without an explicit task as guidance.
+			While I still believe this to be true, I think the progress towards true \ac{AI} is not a huge one: as my experience shows, unsupervised algorithms require too much tuning of additional criteria to fit models according to human expectation.
+			These parameters have to be set manually by experts, contrary to a system that I would consider as being capable of autonomous analysis, which would not require any such external input.
+			The need for precise parameter settings also undermines the dependability of the analysis provided by these algorithms: if it is possible to radically change the outcome by changing parameters, then the given analysis is never the ``absolute'' truth, which diminishes the trustworthiness of the results.
+			We have seen this aspect in many places: having to guess the number of quanta in \kmeans{}, setting the balancing coefficient for \ac{RIM}, or the need for \ac{DCT} in \ac{QoS} prediction.
+			Thus, while I think unsupervised \ac{DL} algorithms do represent an increased cognitive power over supervised algorithms, the currently realized unsupervised training methods also make the results questionable, detracting from algorithms' overall perceived cognitive capabilities.
+			
+		\subsection{Benefits and Shortcomings of Unsupervised DL (A5.2)}
+
+			Machine intuition algorithms are trained in an unsupervised manner, negating the need for labeled training data.
+			This is an immense benefit, as efficient large-scale labeling processes -- such as crowdsourced label collection -- are not feasible in the network automation domain, on account of the small number of potential participants (operators) relative to the large amount of data needed.
+			Not requiring labels means that the training dataset for machine intuition algorithms can be prepared with simple preprocessing steps, allowing for the complete automation of the training process.
+			In theory, this enables machine intuition algorithms to be easily deployed in a large number of instances, to be deployed in different contexts, or to be repeatedly retrained to follow changing contexts in an automated way.
+			This automated training allows individual model instances to be trained for smaller contexts, such as a single cell, which in turn allows for context-specific modeling, such as trajectory-based optimal handover prediction, enabling much of the context-sensitivity promised in \ac{CAN}.
+			
+			Unfortunately, I don't think unsupervised \ac{DL} algorithms -- mostly quantization and clustering algorithms, but to a smaller extent all unsupervised \ac{DL} algorithms undertaking feature extraction -- can really be trained in this automated manner.
+			While unsupervised algorithms save the effort of label generation, they require greater human supervision during training, as they are more sensitive to parameter tuning than their supervised counterparts.
+			Because the labels strictly define the modeling task, supervised algorithms allow more room for error in parameters, such as weight-decay, and meta-parameters, such as the neural net topology.
+			The modeling task implicitly defined with additional criteria in unsupervised learning allows for a large range of ``good'' answers depending on the parameters.
+			Thus, unsupervised algorithms depend on the fine-tuned settings of these parameters for the specific task, because the parameters govern the ``definition'' of the modeling task. 
+			We have seen examples of this during the \ac{DANCE} evaluation on the MNIST dataset, where the \ac{DCCS} algorithm achieved worse results with our deep \ac{CNN} than the originally published performance with a shallower, simpler net.
+			
+			The same evaluation also highlights another aspect of unsupervised algorithms: while they are not trained using context-specific labels, context-specific bias can be inherently embedded in the meta-parameters and training methods.
+			We have seen this when evaluating deep clustering algorithms on mobile network data, which were originally designed to work on images.
+			Some algorithms -- which had very generic constraints on the internal representation -- functioned similarly with both datasets, while others with image-specific constraints or regularization methods completely failed on the mobile network dataset.
+			While not at this magnitude, I expect similar problems to also occur when using the same algorithm in two different contexts within mobile networks, such as a beam optimization algorithm designed for an urban environment and used in a rural setting.
+			Of course, the same is definitely true for supervised algorithms, so this aspect cannot be really seen as a shortcoming of unsupervised algorithms.
+			Furthermore, when tuned correctly, unsupervised algorithms are less prone to overfitting than supervised algorithms -- generalizing better -- possibly allowing for use in different contexts after all, even without retraining.
+			However, care must be taken when deploying into different contexts, which means a human supervisor has to be present, removing one advantage of unsupervised algorithms.
+			
+			Unsupervised \ac{DL} algorithms are also more sensitive to the number and usefulness of the input features than their supervised brethren.
+			Once again, because of the explicitly defined task, supervised algorithms can select only the useful features for their model during training, and disregard other, less useful inputs.
+			Because of the implicit task description, unsupervised algorithms cannot do this selection, thus, every input is considered in the model.
+			Useless features in the input can disturb the model, while features with large amplitudes can overshadow others, becoming the controlling feature the model pays attention to.
+			I have encountered examples of such behavior in network state modeling, with the amplitude governing the number of quanta that is arranged along certain feature dimensions, and in our \ac{QoS} prediction work, where possibly relevant inputs -- such as \ac{RSRP} -- illogically had a negative effect on the final prediction accuracy.
+			Unlike images or written text, mobile network data is heterogeneous, with features having vastly different meanings, thus, feature selection and normalization is critical.
+			For these tasks, there is no single solution which applies to every dataset and use case, thus, data cleaning and normalization is something that also requires expert supervision.
+			
+			All-in-all, unsupervised algorithms also require plenty of expert supervision during design and deployment, the same as their supervised brethren.
+			While this takes away some usability, unsupervised algorithms still retain a large advantage over supervised algorithms: the lack of need for labeled training data, which, in many cases, is simply not available in mobile networks.
+
+		\subsection{Short- and Long-Term Adoption, Following Trends (A5.3)}
+			
+			The adoption of \ac{DL} is slow in mobile network automation.
+			I believe there are a few underlying reasons for this: 1) the established structure of mobile network development, with lengthy processes for standardization required for interoperability between vendors, 2) the unsupported hardware requirements for \ac{DL} and 3) the small immediate benefits against the unclear, but expected to be high costs of large-scale \ac{DL} deployment.
+			These problems hinder the adoption of \ac{DL} in large-scale, commercial mobile networks, however, smaller, private campus networks -- found in factories, storehouses or larger industrial sites, such as ports -- do not suffer from any of these restrictions.			
+			Campus networks are usually supported by a single vendor, thus are free from the burdens of standardized interoperability with other vendor's products.
+			Outfitting these small networks with \ac{DL} support can be done simply, with a single server serving as hardware accelerator for the whole network.
+			Furthermore, the requirements or the cost/benefit ratio does not play a role in the question whether \ac{DL} should be used in these settings, as cost is usually not a concern.
+			Currently, these small networks are used as a testbed for new technologies.
+			Campus networks are especially good for trying out \ac{CAN} concepts, because industrial use cases require many of the benefits \acp{CAN} promise, such as high reliability, adaptability and efficiency.
+			In the short-term, I believe machine intuition techniques and \ac{CAN} concepts will be deployed in these private campus networks, and will mostly serve industrial applications.
+			
+			In the commercial domain, many applications already use \ac{DL} on the mobile phone: face recognition in photo galleries, dynamic overlays in video-chatting apps, or voice command recognition in virtual assistants.
+			These applications could or already do offload their processing from the mobile phone to the network to save battery or processing power.
+			Commercial mobile networks are planned to support \ac{DL}-enabled applications with resources that are distributed in the network to save on communication load and latency.
+			However, if \ac{DL} is already supported for applications, there is no reason why network automation functions could not utilize this support, diminishing the cost of the large-scale deployment of \ac{DL}-based network automation, and making the benefits more substantial.
+			I think simply available resources will create a trend leading to the general adoption of \ac{DL}-based network automation functionality, but whether this adoption will include machine intuition techniques is not clear.
+			
+			Supervised \ac{DL} algorithms are not discussed much in the mobile network automation context nowadays.
+			I believe this is the effect of the lack of labeled datasets, which are seldom generated and never shared in the mobile networking community.
+			This lack of labeled datasets shifted the focus towards unsupervised and reinforcement learning algorithms, a trend which I think might change in the future if good simulators or digital twins are developed for mobile networking scenarios.
+			On one hand, simulators could shift the focus back towards supervised learning techniques, as they allow for targeted data generation where the data has inherently attached labels, similar to how we generated data for different user groups for the clustering and imputation evaluation.
+			On the other hand, if simulators are fast and lightweight enough, targeted data generation might not even be needed, as reinforcement learning algorithms could use them as a sandbox to efficiently learn to control the network by trial and error.
+			I hope that in any case, generally applicable machine intuition concepts such as confidence or prediction will continue to be used, and hopefully help network automation algorithms climb the cognitive pyramid towards true \ac{AI}.
+
+	\section{Outlook of DL in Mobile Networks}
+	
+		\subsection{On the Caveats of DL}
+			% talk about the 4 "On" chapters conclusions, reconclude them here:
+			%  * quantization: you need gpus even if you have parallelization-enabled algorithms, they don't become fast on regular hardware
+			%  * clustering: understandability, design bias for the sake of understanding is going to hurt performance, we should not sacrifice function for understanding
+			%  * prediction: privacy is very important
+			%  * confidence: end-to-endness, standardization hurts	
+			
+			Within every major part in this thesis, I dedicated one section to a caveat, a problematic aspect in the use of \ac{DL}, distinguished in the section title with the ``On'' keyword.
+			I would like to reiterate on these caveats, to summarize the most important problems that arise in the process of adopting \ac{DL} algorithms in mobile network automation.
+			
+			In Sec.~\ref{cha:quantization:sec:on_parallelization}, connected to the neural-net-like implementation of the \kmeans{} and \ac{BSQ} algorithms, I have touched on the hardware acceleration needs of \ac{DNN}-like massively parallel algorithms.
+			In my experience, without specific hardware accelerators -- \acp{GPU} -- \acp{DNN} take an extensively long time to train, making them a hassle to use.
+			While future mobile networks plan to support \ac{DL}, more often than not this support is envisioned using regular servers without hardware acceleration.
+			The problem is that while the ``traditional'' consolidation techniques -- virtualization or containers -- function well for generic server tasks in cloud-like resource pools, it is quite complicated to integrate hardware accelerators into them.
+			On top of this, accelerators would need to be newly bought, adding a large entry cost to using \ac{DL}, where as \ac{CPU}-based \ac{DL} support can be realized by repurposing existing cloud infrastructure, solely through software updates.
+			These setups pass for now because there are not many \ac{DL}-based applications or network automation functions that utilize these resources, but it is not scalable for the widespread use of \ac{DL}.
+			Hopefully, maturing drivers and software will make the integration of hardware accelerators easier, which will spur the deployment of proper \ac{DL} support in the future.
+			
+			In Sec.~\ref{cha:sparse_clust:sec:bias}, I discussed the potential negative effects of designing \ac{DL} models for explainability.
+			The example was our \ac{SCA} algorithm (Cha.~\ref{cha:sparse_clust}), which did not work well on complex clustering tasks, because of a restrictive internal representation.
+			The internal representation was forced to be similar to a fully connected graph in an effort to make the model explainable.
+			Since conducting that research, I am an advocate for having end-to-end \ac{DL} models, with as little human bias involved as possible, such as constrained representations.
+			However, the lack of trust towards \ac{DL} algorithms is a major roadblock in the way of widespread adoption, which could probably be helped by having explainable models.
+			I believe the solution is to develop explanation techniques which do not require the simplification or restriction models.
+			Instead, good explainability techniques would work as a post-processing steps, querying the model in a targeted way, or generating data with the model that can be used as explanation for its decisions.
+					
+			A different source of the same problem was highlighted in Sec.~\ref{cha:imputation:sec:dl_standards}, in which I discussed the potentially detrimental effects of standardized \ac{DL} frameworks, connected to our integrated imputation algorithm.
+			These standards can have the same effect as designing for explainability: restricting models by splitting up functionality into compartmentalized blocks and strictly defining interfaces between them.
+			Once again, these actions can constrain (what should have been) internal representations in the end-to-end model, effectively restricting model complexity.
+			I believe standards should not try to define \ac{DL} frameworks to this extent, rather, support \ac{DL} through standardized data collection from-, and actuation interfaces to the network.
+			
+			A keen reader might notice a discrepancy in this argument, as this very thesis discusses a task where a split \ac{DL} process worked better than an end-to-end one.
+			In Cha.~\ref{cha:pred_ho} and Cha.~\ref{cha:pred_control}, I compared a direct radio \ac{QoS} prediction with an indirect one, where the end-to-end task was split into a user mobility prediction and a location-to-\ac{QoS} mapping step.
+			We found that the split prediction worked more reliably, while also allowing for additional features, such as the evaluation of not yet deployed changes through a digital twin.
+			How can this be, if \ac{DL} are supposed to work best if employed in an end-to-end fashion?
+			The answer is, of course, that the end-to-end rule is not absolute: some modeling tasks can naturally be split into multiple steps, and function better so.			
+			In the \ac{QoS} prediction case, the radio quality is inherently controlled by the user's location.
+			By separating the prediction from the radio map, the two models could be more focused and be regularized better, arriving at a more precise prediction overall.
+			My argumentation is not against step-by-step processing as a whole, rather, doing so even when the original task does not warrant it.
+			Furthermore, in this case, mapping the radio environment through a digital twin allowed for the ``generation'' of data which was not present in the original dataset, further helping regularization.
+			
+			Finally, in Sec.\ref{cha:pred_control:sec:privacy}, connected to user location prediction, I have talked about the issue of maintaining data privacy in the collection of training and inference data for \ac{DL} models.
+			\ac{DL} often runs into this problem, because for its most effective use, \ac{DL} requires in-depth information about the entities it models,	which information is often private in the case us humans are the entities to be modeled.	
+			In fact, most of the mystery behind clever \ac{DL} applications can be attributed to invasive data collection practices: clever recommendations about where to eat next, or automatically generated responses to emails are not the ``magical'' reasoning of an all-knowing \ac{AI}, rather, the results of monitoring and scanning millions of user's movements, habits and emails, often without their knowledge.
+			Recent laws (e.g. in the European Union) have tried to control when and which type of data can be collected from users, in my opinion with little success; the data-trading industry is booming, with the main income of technology giants being the monitoring and selling of user information to any buyer ready to pay the price.			
+			I believe mobile networks can do better, by standardizing and strictly enforcing anonymized data collection practices, clearly and simply asking the users' permission, and even refraining from sensitive data collection wherever it is not necessary.
+			I hope mobile phones will not become inherent monitoring devices, because while user's can decide not to use certain browsers or social media sites, slowly but surely it becomes impossible to not use our mobile phones.
+	
+		\subsection{On DL Research}
+			\label{cha:conclusion:sec:dl_research}
+			
+			During the start of my thesis work, while \ac{DL} was an often mentioned topic, I felt that in-depth \ac{DL} research was not discussed in mobile networking circles.
+			As I have shown in Sec.~\ref{cha:deep_learning:sec:related_work}, most of the research labeled as \ac{DL} utilized simpler \ac{ML} algorithms, and even if a \ac{DNN} was used, the research usually never involved any special modifications or extensions, the algorithms were used as a ``black box''.
+			This led to a lack of a deeper discussion about \ac{DL} in mobile networks research, where most papers would only focus on results, (marginal) gains achieved by using a \ac{DL} algorithm in place of already existing solutions.
+			This attitude became a problem for my research, as my papers contained more in-depth explanations of algorithms, and were often deemed ``too technical'' for mobile networking conferences or journals.
+			Fortunately, the situation seems to be changing, as vendors now started to seriously pick up on \ac{DL} research, and with this, \ac{DL} experts are entering the mobile networking field who are interested in the inner workings of algorithms.
+			However, even if researchers are interested in \ac{DL} algorithms now, the problem remains that only few research papers are published which are supported by reproducible results.		
+
+			In my experience, the publishing of reproducible research is specifically impeded by the unwillingness to share datasets.
+			In other fields -- such as image recognition -- this would not be a problem, because there are publicly available datasets, which can be used for the evaluation of the algorithms, but \ac{DL} in mobile networks is different in this regard.
+			On one hand, it is impossible to gather and compile such a dataset from public sources, as all mobile networks are owned and run by operators, which are, as businesses, unwilling to give out potentially damaging data for virtually no gain.
+			On the other hand, smaller networks or artificial ``testbeds'' generally do not produce data that contains the same complexity as a large-scale mobile networks, which makes them unfit for use in \ac{DL} research.
+			This is a problem, because independent research entities, such as universities -- the source of many of the largest innovations in technology -- cannot effectively participate in \ac{DL} research for mobile networks, as they are starved for real data.
+			
+			To get access to real network data, the best approach for independent researchers is to participate in joint projects with vendors and operators, which unfortunately causes them to get caught up in the monetary side of research, and potentially prohibit them from publishing reproducible results.				
+			Even network vendors -- the developers of mobile networks -- often have a hard time gathering real network data, because it is owned by the operators.
+			This problem is specific to our field, as other main contributors to \ac{DL} -- such as developers of social media sites -- don't have the split between vendors and operators, and owning and operating their own product allows them to collect data which can then be used for research.
+			The situation might change in the future, as I see a growing realization of a need for better simulators, which could theoretically be used to generate plentiful realistic data.			
+			This might also ease the sharing of datasets for companies, as artificially generated data usually does not contain information that could be detrimental to them.			
+			However, good simulators still need data to verify correct functioning, and to align the results with real world measurements, something that is especially true for the currently trending digital twin concepts.
+			All-in-all, \ac{DL} research requires the cooperation of multiple entities, which is always complicated in a corporate environment.
+			
+			Network operators and vendors are businesses, therefore it is somewhat understandable that they do not want to give away potentially profitable technological advancements in the form of openly accessible papers.
+			However, I think this attitude is unhealthy for the whole industry in the long-term, and needs to change if the current mobile networking companies don't want to be swallowed up by more open and innovative technology giants.
+			Reproducible research allows for constructive criticism, and prevents false claims to be perpetuated, thus being beneficial to the field overall.
+			I believe that for a continuous growth in the mobile networking business, a good research community and good practices have to be established, in order to create a real competition that is based on facts, and spur technological innovation that allows these companies to stay ahead.
+			In this regard, I am very proud that we managed to publish fully working code and a dataset with our integrated imputation research in the end, which I think is a good sign that at least Nokia is on the right track towards a more healthy research attitude.
+			
+			For a while, I feared that \ac{DL} is just another hyped buzzword in mobile networks, soon to be forgotten and replaced by other supposed technological revelations.
+			At the start of my research work, there existed a large gap between the conceived power and the actual capabilities of \ac{DL}: concepts contained a lot of wishful thinking, stemming from the lack of understanding and experience with \ac{DL}, or any \ac{ML} algorithms in general.
+			However, it seems \ac{DL} survived the ``hype cycle'', with companies understanding the real capabilities of- and need for \ac{DL}, and investing more and more into research.
+			By now, I am confident to predict that \ac{DL} is here to stay, and if it is ever replaced by a new technology, it will be something that is even more complex, and requires even more resources and research.
+			After all, \ac{DL} is just a stepping stone for machine learning, on the long way towards realizing true \ac{AI}.

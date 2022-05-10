@@ -1,0 +1,355 @@
+\documentclass{wissdoc}
+%[draft]
+%\documentclass[oneside]{wissdoc}
+%% ----------------------------------------------------------------
+%% Diss - Main Document
+%% ----------------------------------------------------------------
+%% wissdoc Options: draft, relaxed, pdf, oneside --> wissdoc.cls
+%% ----------------------------------------------------------------
+
+%% ----------------------------------------------------------------
+%% Usepackages
+%% ----------------------------------------------------------------
+% Some packages are already included in wissodc.cls!
+
+\usepackage{tabularx}
+\usepackage{bibentry}
+\nobibliography*
+%\usepackage{hyperref}
+\usepackage{tocbibind}
+\usepackage{makecell}
+\usepackage{forest}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{lipsum}
+\usepackage[toc, acronym, nomain, nonumberlist, nogroupskip]{glossaries}
+\usepackage{booktabs}
+\usepackage{lscape}
+\usepackage{enumitem}
+\usepackage{rotating}
+%\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{amssymb}
+\usepackage{pgf}
+\usepackage{pgfplots}
+\usepackage{mathtools}
+\usepackage{pifont}
+\usepackage[final]{listings} % Show listings also in draft mode
+%\usepackage{color}
+\usepackage[ruled, vlined, linesnumbered]{algorithm2e}
+\usepackage{soulutf8}
+\usepackage{epigraph}
+\usepackage{amsthm}
+\usepackage[yyyymmdd,hhmmss]{datetime}
+\usepackage{titlesec}
+
+\usepackage{siunitx}
+\sisetup{ table-number-alignment=center,
+	table-figures-integer = 1,
+	table-figures-decimal = 3}
+
+\usepackage{titletoc}
+\titlecontents{part}             	% Section
+  [0em]                             % Left
+  {\vspace*{\baselineskip}}         % Above code
+  {\bfseries\thecontentslabel\quad} % Numbered format
+  {\bfseries\large}                 % Numberless format
+  {}           						% Filler
+  []                                % Separator
+\titlecontents{chapter}             % Section
+  [0em]                             % Left
+  {\vspace*{\baselineskip}}         % Above code
+  {\bfseries\thecontentslabel\quad} % Numbered format
+  {}                                % Numberless format
+  {\dotfill\thecontentspage}        % Filler
+  []                                % Separator
+\titlecontents{section} 			% Section
+  [1.7em]                  			% Left
+  {\vspace{-.3em}}               	% Above code
+  {\thecontentslabel\quad}   		% Numbered format
+  {}                     			% Numberless format
+  {\dotfill\thecontentspage}		% Filler
+  []              					% Separator
+\titlecontents{subsection} 			% Section
+  [4em]                  			% Left
+  {\vspace{-.3em}}               	% Above code
+  {\thecontentslabel\quad}   		% Numbered format
+  {}                     			% Numberless format
+  {\dotfill\thecontentspage}		% Filler
+  []              					% Separator
+\titlecontents{subsubsection} 		% Section
+  [6.9em]                  			% Left
+  {\vspace{-.3em}}               	% Above code
+  {\thecontentslabel\quad}   		% Numbered format
+  {}                     			% Numberless format
+  {\dotfill\thecontentspage}		% Filler
+  []              					% Separator
+
+\usepackage{caption}
+
+\usepackage{amsmath}
+\numberwithin{algocf}{chapter}
+
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\newtcolorbox{publication}[1][]{%
+	colback=black!5,
+	colframe=black!5,
+	notitle,
+	sharp corners,
+	enhanced,
+	borderline west={4pt}{0pt}{black!30}
+}
+
+\newtcolorbox{patent}[1][]{%
+	colback=white,
+	colframe=black!60,
+	notitle,
+	sharp corners,
+	boxrule=1pt,
+	enhanced,
+	borderline west={4pt}{0pt}{black!60}
+}
+
+%% ----------------------------------------------------------------
+%% Commands and other options
+%% ----------------------------------------------------------------
+%% PDF
+%\pdfinfo{
+% /Title  (diplarb.pdf)
+% /Author ()
+% /Subject (Diplomarbeit zum Thema ...)
+% /Keywords()
+%}
+\pdfminorversion=7
+\pgfplotsset{compat=1.17}
+
+%% Colors
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{lightgray}{rgb}{0.5,0.5,0.5}
+\definecolor{darkgray}{rgb}{0.2,0.2,0.2}
+\definecolor{gray}{rgb}{0.4,0.4,0.4}
+\definecolor{darkblue}{rgb}{0.0,0.0,0.6}
+\definecolor{cyan}{rgb}{0.0,0.6,0.6}
+
+\definecolor{one}{RGB}{193,213,247}
+\definecolor{two}{RGB}{141,177,255}
+\definecolor{three}{RGB}{217,221,227}
+\definecolor{four}{RGB}{180,187,198}
+
+\definecolor{hlbluedark}{RGB}{141,177,255}
+
+%% Print URLs not in Typewriter Font
+\def\UrlFont{\rm}
+
+%% Commands
+% Roman numerals
+\newcommand{\RomanNumeralCaps}[1]{\MakeUppercase{\romannumeral #1}}
+
+% Blank page
+\newcommand{\blankpage}{
+ \clearpage{\pagestyle{empty}\cleardoublepage}
+}
+
+% Temp. reference  
+\newcommand{\refhold}[1]{\textbf{!!REF!!}}
+
+% Weird algorithm names
+\newcommand{\kmeans}{\textit{k}-Means}
+\newcommand{\kmedoids}{\textit{k}-Medoids}
+\newcommand{\kmedians}{\textit{k}-Medians}
+
+% Emphasized (non-)indexed words
+\newcommand{\emphix}[2]{\textbf{#1}\index{#2}}
+\newcommand{\emphnox}[1]{\textit{#1}}
+\newcommand{\nomphix}[2]{#1\index{#2}}
+
+% Acronym commands (falling back from acro to glossaries)
+\newcommand{\ac}[1]{\gls{#1}}
+\newcommand{\acp}[1]{\glspl{#1}}
+
+% Table highlights
+\newcommand{\hlone}[1]{\cellcolor{one}\textcolor{black}{#1}}
+\newcommand{\hltwo}[1]{\cellcolor{two}\textcolor{black}{#1}}
+\newcommand{\hlthree}[1]{\cellcolor{three}\textcolor{black}{#1}}
+\newcommand{\hlfour}[1]{\cellcolor{four}\textcolor{black}{#1}}
+
+
+%% Hyphenation
+\hyphenation{
+	cryp-to-gra-phy
+	iden-ti-fi-ca-tion
+	au-then-ti-ca-tion
+	re-fe-ren-ce
+	trust-wor-thy-ness
+	par-ti-ci-pants
+	hand-o-ver
+}
+
+% ====================================================================================
+% ====================================================================================
+% \make* doesn't run in texstudio
+% call these tools manually from Tools > Commands
+% and build it a few times
+% ====================================================================================
+% ====================================================================================
+
+% Glossary (acronyms)
+\input{content/acronyms.tex}
+\renewcommand*{\glsclearpage}{}
+\ifnotdraft{\makeglossaries}
+
+% Index
+\ifnotdraft{\makeindex}
+
+%% ----------------------------------------------------------------
+%% Main document
+%% ----------------------------------------------------------------
+\begin{document}
+	
+	%% ------------------------------------------------------------
+	%% Cover and others
+	%% ------------------------------------------------------------
+	\hypersetup{pageanchor=false}
+	\ifnotdraft{	
+		% For the fancy I8 book cover see "cover" section of package
+	
+		% Titelseite
+		\include{content/preamble/title}
+		
+%		% Imprint
+%		\include{content/preamble/imprint}
+%		\ifnotonesideelse{\blankpage}{}
+	
+	 	% Abstract
+		\include{content/preamble/abstract}
+		\ifnotonesideelse{\blankpage}{}
+	
+		% Kurzfassung
+		\include{content/preamble/kurzfassung}
+		\ifnotonesideelse{\blankpage}{}
+		
+%		% Danksagung
+%		\include{content/preamble/acknowledgements}
+%		\ifnotonesideelse{\blankpage}{}
+	}
+	\hypersetup{pageanchor=true}
+	
+	\glsresetall
+	
+	%% ------------------------------------------------------------
+	%% Table of contents
+	%% ------------------------------------------------------------
+	\pagenumbering{roman}
+
+	% TODO: check if all is included: - literature, acronyms, index
+	% TODO: check wrong page numbers
+	% TODO: check hyperrefs
+	\tableofcontents
+	\blankpage
+	
+	%% ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	%% Core
+	%% ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	\pagenumbering{arabic}
+	
+	\fancypagestyle{plain}{
+	  \fancyfoot[LE, RO]{Version: \today{} -- \currenttime}
+	  %\fancyfoot[LO, RE]{Using fancyhdr}
+	}
+
+	% This week -----------------------------------------------------------
+	
+	% TODO: check Rolf Stadler's publications
+	
+	% TODO: send to Benedek
+	% TODO: send to Henning
+	
+	% ITT
+	% TODO: go over publications and IRs - make them match also in the chapter intros
+	% TODO: nice organization for them with splitters
+	
+	% TODO: reread the whole thesis, meanwhile:
+	% TODO: replace "we" with I, or this thesis	
+
+	\input{content/01_introduction}
+	\input{content/02_deep_learning}
+	
+	\part{Exemplification}
+		\label{part:exemplification}
+		\input{content/03_quantization}
+		\input{content/04_ema}
+		\input{content/05_sum_exemplification}
+		
+	\part{Association}
+		\label{part:association}
+		\input{content/06_sparse_clust}
+		\input{content/07_decorr_ae}
+		\input{content/08_sum_association}
+		
+	\part{Prediction}
+		\label{part:prediction}
+		\input{content/09_pred_ho}
+		\input{content/10_pred_control}
+		\input{content/11_sum_prediction}
+
+	\part{Confidence}
+		\label{part:confidence}
+		\input{content/12_imputation}
+		\input{content/13_sum_confidence}
+		
+	\part{Conclusion}
+		\label{part:conclusion}
+		\input{content/14_conclusion}
+		
+	
+	%% ------------------------------------------------------------
+	%% Bibiliogrpahy
+	%% ------------------------------------------------------------
+	% TODO: fix warnings with citations
+	% TODO: check for duplicate citations
+	
+	\ifnotonesideelse{\blankpage}{}
+	\bibliographystyle{unsrturl}
+	\bibliography{
+		references/01_lib_introduction,
+		references/02_lib_deep_learning,
+		references/03_lib_quantization,
+		references/04_lib_ema,
+		references/06_lib_sparse_clust,
+		references/07_lib_decorr_ae,
+		references/08_lib_sum_association,
+		references/09_lib_pred_ho,
+		references/10_lib_pred_control,
+		references/12_lib_imputation
+	}
+
+	%% ------------------------------------------------------------
+	%% Listings
+	%% ------------------------------------------------------------
+	\ifnotdraft{		
+		% Acronyms
+		\ifnotonesideelse{\blankpage}{}
+		\begingroup\let\newpage\relax\printglossaries\endgroup
+				
+		% Index
+		\ifnotonesideelse{\blankpage}{}
+		\printindex		
+		
+		% Figures
+		\ifnotonesideelse{\blankpage}{}
+		\listoffigures		
+		
+		% Tables
+		\ifnotonesideelse{\blankpage}{}
+		\listoftables		
+		
+		% TODO: do I need a list of algorithms?
+%		\ifnotonesideelse{\blankpage}{}
+%		\listofalgorithms
+	}
+\end{document}

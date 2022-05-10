@@ -1,0 +1,752 @@
+\chapter{Deep Clustering of Mobile Network Data}
+	\label{cha:decorr_ae}
+	
+	In the process of trying to improve our \ac{SCA} algorithm (as detailed in the previous chapter), we evaluated quite a few clustering algorithms -- originally designed for image processing -- on data from a simulated mobile network.
+	It became clear during these evaluations that clustering algorithms often do not perform as well on mobile data as they do on their originally intended data type.
+ 	The suspected causes were twofold: first, a large portion of the logged \acp{KPI} in the simulated dataset contained clustering-irrelevant features, and second, the data does not behave as images, so many of the preconceptions which apply to that domain do not apply to ours.
+	Although we were unable to improve \ac{SCA}, we suspected that not only is it possible to achieve similar performance in our domain as other clustering algorithms achieve in image processing, but that there is room for improvement beyond the current state-of-the-art performance if a clustering algorithm is developed specifically for mobile network data.
+	
+	Armed with the lessons learned from our \ac{SCA} development, we set out to create a deep clustering algorithm.
+	The three main design goals with this algorithm were:
+	\begin{itemize}
+		\item 
+			A mechanism that tries to separate clustering-relevant features from clustering-irrelevant features, in order to be robust against noisy or irrelevant information, which is common in mobile networks data.
+		
+		\item
+			An unbiased nature, i.e.: mechanics and constraints which are not specific to any domain, making the algorithm applicable to many tasks in mobile network automation.
+			
+		\item
+			A secondary clustering step, which is completely detached from the regularization (such as the autoencoder reconstruction), at least in the early training.
+	\end{itemize}
+
+	To this end, we devised \ac{DANCE}, intended to be a reliable deep clustering method which performs well when applied to network automation use cases. 
+	\ac{DANCE} uses a reconstructive clustering approach, separating clustering-relevant from clustering-irrelevant features in a latent representation.
+	
+	This chapter details the work published in the following paper:
+	
+	\begin{publication}
+		Decorrelating Adversarial Nets for Clustering Mobile Network Data \\
+		\textit{Márton Kajó, Janik Schnellbach, Stephen S. Mwanje, Georg Carle} \\
+		arXiv preprint arXiv:2103.08348 (2021).
+	\end{publication}
+
+	My contributions to the above paper was the design, implementation and evaluation of the algorithm, as well as the co-authoring of the paper.
+	The discussion in this thesis expands on the paper, by adding further details to the explanation of the inner-workings of the algorithm, as well as some competing state-of-the-art clustering algorithms, and a more detailed evaluation than what was included in the paper. 
+	The algorithm discussed in this chapter is also contained in the following patent application:
+	
+	\begin{patent}
+		Latent Variable Decorrelation for Deep Clustering in Mobile Networks \\
+		\textit{Janne Ali-Tolppa, Márton Kajó, Stephen S. Mwanje} \\
+		WO, PCT application no.: PCT/EP2020/072019, filed August 2020
+	\end{patent}
+
+	\section{Decorrelating Adversarial Nets for Clustering Mobile Network Data}
+		\label{cha:decorr_ae:sec:decorr_ae}
+		
+		\subsection{Clustering in Mobile Network Automation}
+			\label{cha:decorr_ae:sec:clust}
+		
+			The majority of deep learning research targets supervised learning, such as classification, where the deep learning algorithms learn to output the ground truth that is explicitly defined in the training data in the form of labels or values, usually collected through crowdsourcing or data mining.
+			However, these label generation processes are not available for mobile network automation, as network management tasks require expert knowledge, thus only a handful of people are capable of undertaking them.
+			Requiring these experts to manually generate examples to be able to train deep learning algorithms in a supervised way is not feasible.
+			Deep clustering can alleviate this problem, by providing a precise, predefined grouping of the mobile network data, which the expert can label with little effort.
+			This labeled dataset is then useful as-is in some tasks, or can be used for training supervised methods.
+			However, the clustering process is only useful if it can precisely find the ground truth classes in the data, and define clusters which correspond to them.
+			
+			\begin{figure}[ht]
+				\centering
+				\includegraphics[width=0.6\linewidth]{figures/07_decorr_ae/use_cases/use_cases.pdf}
+				\caption[User behavior clustering use cases]{Illustration of network automation use cases involving user behavior clustering.}
+				\label{fig:use_cases}
+			\end{figure}
+			
+			Clustering is already used in a variety of network and service management use cases, where deep clustering could improve current functionality.
+			Some examples of these are:
+			\begin{itemize}
+				\item 
+					Slice provisioning (instantiation) may utilize usage types defined through clustering, in order to select appropriate templates for the slices based on predicted requirements \cite{slice}.
+					
+				\item
+					\ac{QoE} estimation tries to map explicitly measurable \acp{KPI}, such as network delay, jitter or throughput to user satisfaction levels \cite{qoe}. Here, clustering may be utilized to establish user archetypes.
+					
+				\item
+					Network anomaly detection may utilize generative clustering to map normal usage patterns, and detect outliers which point to anomalous events in the network \cite{anomaly}.
+			\end{itemize}
+			
+			These tasks all involve clustering of the \textit{behavior} of users, applications or services, by finding implicit patterns in the collected data (Fig.~\ref{fig:use_cases}).
+			Feature engineering and manual definition of clustering rules is quite hopeless, as the collected information that could be useful for these tasks usually does not contain the necessary information explicitly.
+			Well-intended targeted data collection -- such as deep packet inspection (snooping) -- is also increasingly difficult, as more and more of the communication is encrypted or governed by privacy laws (and rightly so).
+			Thus, deep clustering algorithms that simultaneously extract implicit patterns and form groups using these patterns are the perfect match for these tasks.
+			
+			Deep clustering has seen a surge in attention recently, with huge performance improvements being published every few months.
+			Some algorithms are now quite close to supervised classification performance, a feat that was unimaginable even a few years ago.
+			However, as shown later, applying these cutting-edge algorithms to mobile network data is not straight-forward.
+			Most deep clustering algorithms are developed for image datasets, and are able to achieve great performance because of inherent assumptions and optimization that are specific to image data.
+			These biases often don't translate well to mobile networks, where the performance of the algorithms degrades, in some cases significantly.
+			This work elaborates on the challenges faced in applying these new algorithms in network automation, and how they can be overcome.
+			
+		\subsection{State-of-the-Art in Deep Clustering}
+			\label{cha:decorr_ae:sec:sota}
+		
+			For the purpose of this discussion, we can split deep clustering methods into two categories: \emphix{generative}{generative clustering} and \emphix{discriminative}{discriminative clustering}.
+			Generative methods try to describe the data in a clustering-friendly representation.
+			While learning, this representation is used both to define clusters, as well as to be able (re)construct data points into the original data space.
+			Discriminative methods immediately try to divide the data into groups, without learning to recreate or generate data points in the process.
+			
+			\emphix{Reconstructive}{reconstructive clustering} methods, a subset of generative methods, learn to encode data into a simplified latent representation, from which the original data points can be decoded (reconstructed) effectively.
+			For this purpose, most of the reconstructive clustering methods utilize autoencoder neural nets, made up of an encoder and a decoder sub-net (Fig.~\ref{fig:rec_topo}). 
+			By learning to distill information into a constrained latent space, autoencoders compress and reduce noise, formulating a high-level latent representation of the data, which contains only the most descriptive, meaningful features.
+			Reconstructive clustering methods use these latent features on the assumption that these are also the best descriptors of clusters in the data.
+			
+			\begin{figure}[ht]
+				\centering
+				\subfloat[Reconstructive]{
+					\includegraphics[width=0.3\linewidth]{figures/07_decorr_ae/clust_topo/rec_topo.pdf}
+					\label{fig:rec_topo}
+				}
+				\hspace{0.06\linewidth}%
+				\subfloat[Discriminative]{
+					\includegraphics[width=0.2\linewidth]{figures/07_decorr_ae/clust_topo/disc_topo.pdf}
+					\label{fig:disc_topo}
+				}
+				\caption[Reconstructive and generative deep clustering architectures]{The basic architecture of the two main deep clustering approaches.}
+				\label{fig:clust_topo}
+			\end{figure}
+			
+			One of the first examples of reconstructive deep clustering algorithms is \ac{DEC} \cite{dec}.
+			In \ac{DEC}, a stacked autoencoder is pretrained, after which cluster centroids in the latent space are jointly optimized with the encoder, in order to best fit the encoded points to a predefined distribution around the centroids.
+			This optimization causes the encoded points to tightly group around the cluster centroids, which has the effect of refining the clusters and increasing the nearest-neighbor assignment's accuracy. 
+			This algorithm is introduced in more detail in Sec.~\ref{cha:decorr_ae:sec:rim_init_dec_clust}, as our proposed method is partly inspired by it.
+			Other similar methods, where the encoding is jointly optimized with the internal clustering are \ac{VaDE} \cite{vade} and \ac{DEPICT} \cite{depict}.
+			
+			\textit{\ac{ACAI}} \cite{acai} represents a different reconstructive approach, where the clustering does not influence the encoding.
+			Instead, a separate mechanism is used to optimize the encoded representation for the later clustering step.
+			\ac{ACAI} adopts an adversarial net commonly found in \acp{GAN} \cite{gan}, to create believable data points when interpolating between encoded points in the latent space.
+			Although not specifically meant for clustering, this regularization through believable interpolation leads to a clustering-friendly latent representation, where traditional clustering algorithms -- such as \kmeans{} -- perform particularly well.
+			
+			Purely generative methods are not as prevalent as reconstructive methods.
+			One generative example is \ac{ClusterGAN} \cite{clustergan}, where a \ac{GAN} generator is used to synthesize believable data points from a mixture of categorical and continuous latent points.
+			Apart from the usual \ac{GAN} setup of the generator (decoder) and adversarial nets, \ac{ClusterGAN} also implements an encoder, effectively realizing an inside-out autoencoder.
+			Because purely generative methods seldom exist, reconstructive methods are sometimes referred to as generative in the following.
+			
+			Reconstructive methods assume that latent features learned through reconstruction are useful for clustering.
+			Unfortunately this assumption does not hold for data in which clustering-irrelevant information (e.g.: small details, or information from other entities) outweighs clustering-relevant information.
+			The best example of this can be seen in photographic datasets, where generative clustering algorithms often produce an effect labeled the \emphix{blue sky problem}{blue sky problem}; planes, birds and other flying objects are all assigned to the same category, because the largest area of the image is taken up not by the object itself, but by the sky in the background.
+			For the reconstruction of these images, the autoencoder pays more attention to correctly encode the sky, while losing sight of the clustering-relevant information about the objects in the latent representation.
+			
+			In another light, learning to decode (reconstruct) data serves as a regularizer in the formulation of the high-level latent representation.
+			Discriminative methods do away with this generative regularization, and replace it with their own specific regularization terms.
+			This approach can have two benefits: the high-level representation can disregard information which is only useful for reconstruction, and the method can output cluster assignments directly, without the need for an additional step.
+			Because of these advantages, discriminative clustering methods generally achieve higher accuracy while being more consistent on image datasets compared to their generative counterparts.
+			The change in approach is also visible in the neural net topologies of these methods, usually consisting of a single sub-net, which effectively only implements the encoder half of an autoencoder (Fig.~\ref{fig:disc_topo}).
+			
+			\ac{IMSAT} \cite{imsat} was one of the first discriminative deep clustering methods to be published.
+			\ac{IMSAT} builds on \ac{RIM} \cite{rim}, a (shallow) discriminative clustering approach which uses mutual information as a metric to develop cluster boundaries.
+			In \ac{IMSAT}, the added \ac{SAT} procedure regularizes the encoding developed by \ac{RIM}, so that the method can utilize deeper neural nets as encoder, without easily falling for degenerate models, thus arriving at better clustering accuracy on complex datasets.
+			In a sense, \ac{SAT} replaces the generative regularization.
+			Another early discriminative method is \ac{DAC} \cite{dac}.
+			
+			The recently published \ac{DCCS} \cite{dccs} method is especially interesting to our discussion.
+			In \ac{DCCS}, the latent space is split into two feature groups, which the authors call category and style features.
+			While all the latent features are used for information maximization, only the category features are used for clustering, which allows the method to further disregard irrelevant information, achieving even purer clusters and thus higher clustering accuracy.
+			The regularization in \ac{DCCS} is done through a combination of adversarial nets and data augmentation in the form of randomized image transformations, such as cropping, aspect-ratio changes, hue and brightness changes, and the occasional horizontal flipping of the image.
+			Other noteworthy discriminative deep clustering methods which use adversarial nets or data augmentation as regularization are \ac{ADC} \cite{adc} and \ac{IIC} \cite{iic}.
+			
+			Lastly, an often cited deep clustering method that does not fit into our categorization is \ac{JULE} \cite{jule}.
+			\ac{JULE} is an agglomerative clustering algorithm, which creates clusters by merging individual observations, then smaller clusters, into ever bigger clusters.
+			It is fundamentally different in its approach to the previously discussed methods here, which all at some point divide spaces or observations into clusters.
+			
+			\begin{table}[t]
+				\centering
+				\renewcommand{\arraystretch}{1.25}
+				\begin{tabular}{l r| S S | S S }
+					\multicolumn{2}{c|}{} & \multicolumn{2}{c|}{MNIST} & \multicolumn{2}{c}{CIFAR-10} \\
+					\cline{3-6}
+					Alg. & Year & ACC & NMI & ACC & NMI \\
+					\hline
+					\ac{DEC} \cite{dec}               & 2016 & 0.843 & 0.772{$^{*}$} & 0.301{$^{*}$}    & 0.257{$^{*}$} \\
+					\ac{VaDE} \cite{vade}             & 2016 & 0.945 & 0.876{$^{*}$} & {$-$}            & {$-$}         \\
+					\ac{DEPICT} \cite{depict}         & 2017 & 0.965 & 0.917         & {$-$}            & {$-$}         \\			
+					\ac{ACAI} \cite{acai}             & 2019 & 0.962 & {$-$}         & {$-$}            & {$-$}         \\
+					\ac{ClusterGAN} \cite{clustergan} & 2018 & 0.950 & 0.890         & {$-$}            & {$-$}         \\
+					\hline
+					\ac{IMSAT} \cite{imsat}           & 2017 & 0.984 & 0.956{$^{*}$} & 0.456            & {$-$}         \\
+					\ac{DAC} \cite{dac}               & 2017 & 0.978 & 0.935         & 0.522            & 0.396         \\
+					\ac{DCCS} \cite {dccs}            & 2020 & 0.989 & 0.970         & 0.656            & 0.569         \\			
+					\ac{ADC} \cite{adc}               & 2019 & 0.987 & {$-$}         & 0.293            & {$-$}         \\
+					\ac{IIC} \cite{iic}               & 2019 & 0.984 & 0.978{$^{*}$} & 0.576            & 0.513{$^{*}$} \\
+					\hline
+					\ac{JULE} \cite{jule}             & 2016 & 0.964 & 0.913         & 0.272{$^{*}$}    & 0.192{$^{*}$} \\
+				\end{tabular}
+				\caption[Published deep clustering algorithm performance on MNIST and CIFAR-10]{Published performance of the state-of-the-art algorithms on the MNIST and CIFAR-10 datasets. Values marked with * are taken from \cite{dccs}. All other values stem from the respective publications.}
+				\label{tab:sota_perf}
+			\end{table}
+			
+			Most of the above mentioned methods are developed for\nobreakdash-, and evaluated on image datasets.
+			Commonly used image datasets for the evaluation of these algorithms are the MNIST\footnote{\url{http://yann.lecun.com/exdb/mnist/}} dataset containing $28\times28$ pixel greyscale images of handwritten digits, or the CIFAR-10\footnote{\url{https://www.cs.toronto.edu/~kriz/cifar.html}} dataset containing $32\times32$ pixel color photos of $10$ object categories (airplanes, cars, etc.).
+			The clustering methods are trained in an unsupervised manner, without the input of the category labels, but are evaluated using the labels as ground truth.
+			Their performance is measured using permutation-invariant external metrics, such as \ac{ACC}, \ac{NMI} or the \ac{ARI}, which quantify the similarity between the true category labels and the learned cluster assignments.
+			Table~\ref{tab:sota_perf} shows the published performance of the above discussed algorithms on the aforementioned image datasets.
+			For the photographic CIFAR-10 dataset, many generative methods have no published results, and the ones that do, show worse performance than their discriminative peers, stemming from the previously discussed blue sky problem.
+			
+		\subsection{An Argument for Generative Clustering}
+			\label{cha:decorr_ae:sec:gen_clust_arg}
+			
+			Applying discriminative algorithms developed for image datasets to non-image datasets is not straight-forward.
+			The specific regularization methods used by the discriminative approaches work well on image datasets, because biologically we humans have a great intuitive understanding of how vision and images behave, thus the authors were able to define meaningful augmentations of the data, which the methods then take into account in their model.
+			The same can usually not be said about data from mobile networks: for example, image augmentations such as rotation or hue changes either don't make sense, or it is questionable if such variations are truly present in the data.
+			
+			In contrast, reconstructive methods don't suffer from such applicability problems; reconstruction always makes sense regardless of the data domain.		
+			However, as mentioned in the previous section, reconstructive methods are prone to experiencing the blue sky problem.
+			As blue-sky-like irrelevant data is also prevalent in mobile networks, some form of mitigation is needed.		
+			Furthermore, reconstructive algorithms often show a large variance in performance, which can be attributed to the inconsistency of the internal clustering step.		
+			The internal, ``traditional'' clustering algorithms -- such as \kmeans{} or Gaussian mixtures \cite{gmm} -- are sensitive to initialization, and often get stuck in local minima when starting from an unfortunate position.	
+			
+			We set out to create a reconstructive clustering method, which tries to improve on the above areas, in order to be consistent and easily applicable to data from mobile networks.
+			The main aspects of our proposed method are:
+			\begin{itemize}
+				\item Easy application on mobile network data stemming from the reconstructive nature.
+				\item Mitigation of the detrimental effects of irrelevant information perturbing the clustering.
+				\item A good initialization for the internal clustering step.
+			\end{itemize}
+			
+		\subsection{Decorrelating Adversarial Net}
+			
+			\begin{figure}[ht]
+				\centering
+				\includegraphics[width=\linewidth]{figures/07_decorr_ae/dance/dance.pdf}
+				\caption[DANCE overview]{Overview of the components, training phases and losses in DANCE.}
+				\label{fig:dan_overview}
+			\end{figure}
+		
+			Our proposal is called \ac{DANCE}, whose components and losses are illustrated in Fig.~\ref{fig:dan_overview}.
+			This section details the core of our proposed approach, the \ac{DAN}.
+			
+			\ac{DANCE} is based on an autoencoder neural net, made up of an encoder $Q$ and a decoder $Q'$.
+			$Q$ realizes the non-linear mapping $Q(\theta_q, x) : X \rightarrow Z$, where $\theta_q$ are learnable parameters, and $Z$ is the encoded, latent feature space with a (much) lower dimensionality than the input (data) feature space $X$.
+			$Q'(\theta_{q'}, z) : Z \rightarrow X$ approximates the inverse of $Q$, trying to reconstruct the original observations from $Z$.
+			Both $\theta_q$ and $\theta_{q'}$ parameters are optimized through stochastic gradient descent, with the objective of minimizing the common \ac{MSE} reconstruction loss.
+			
+			The core idea in \ac{DAN} is the split of the $Z$ feature space.
+			In order to reduce unnecessary reconstructive information used for clustering, the features in $Z$ are split into two sets: features $Z_c$ that contain the clustering-relevant information, and features $Z_r$ that are purely reconstructive.
+			We defined the following rules to distinguish the two sets:
+			\begin{itemize}
+				\item As features in $Z_r$ contain no clustering-relevant information, these must not be correlated to $Z_c$.
+				\item As features in $Z_r$ contain only generic information which is applicable to all clusters, or include reconstruction-specific information about smaller, finer details in the data, $Z_r$ is likely to have a simple, noise-like distribution, such as a Gaussian distribution.
+			\end{itemize}	
+			
+			To separate $Z_r$ from $Z_c$, the above description is posed as an adversarial game.
+			Let $p_g$ refer to points sampled randomly from a Gaussian distribution with the same dimensionality as $Z_r$, $0$ mean and variance $\sigma$.
+			To create non-correlated reference points with the desired distribution, $Z_r$ in the original encoded features $Z = Z_c \oplus Z_r$ are replaced by $p_g$, arriving at $Z' = Z_c \oplus p_g$ ($\oplus$ denotes concatenation).
+			An adversarial net $D$ (decorrelator) has the task to detect if a point comes from $Z$ or $Z'$, by formulating rules that either consider the difference in distribution between $Z_r$ and $p_g$, or detect correlation between $Z_r$ and $Z_c$.
+			The encoder $Q$ has to generate a latent encoding $Z$ which is impossible to differentiate from $Z'$, thus mimicking the distribution of $p_g$ with $Z_r$ and breaking any correlation between $Z_c$ and $Z_r$.
+			
+			$D(\theta_{d}, z): Z \rightarrow d:[0, 1]$ outputs a singular scalar which represents the estimated probability that $z$ came from $Z$ rather than $Z'$.
+			To optimize the decorrelator and the encoder parameters for the adversarial game, stochastic gradient descent is used.
+			The respective losses, which realize the minimization of the Jensen–Shannon divergence as proposed in the original \ac{GAN} paper \cite{gan} are the following:
+			\begin{equation}
+			\label{eq:l_q_cor}
+			\mathcal{L}^Q_{cor} = -\frac{1}{n} \sum_{i=1}^{n} log(d_i),
+			\end{equation}			
+			\begin{equation}
+			\label{eq:l_d_cor}
+			\mathcal{L}^D_{cor} = -\frac{1}{n} \sum_{i=1}^{n} log(d'_i) + log(1 - d_i),
+			\end{equation}
+			\noindent where $d_i$ and $d'_i$ refer to decorrelator guesses on points coming from $Z$ and $Z'$, and $n$ refers to the number of data points in a batch.		
+			
+			The above described neural net setup is very similar to Wasserstein Autoencoders \cite{wae}.
+			As such, in theory the decorrelation does not interfere with the original autoencoding task, and any desired loss function could work well to calculate the reconstruction loss.
+			To balance the losses that affect the encoder, coefficient $\beta_{cor}$ can be introduced, so that the final encoder loss is:
+			\begin{equation}
+			\label{eq:l_q}
+			\mathcal{L}^Q = \mathcal{L}^{QQ'}_{rec} + \beta_{cor}\mathcal{L}^Q_{cor}
+			\end{equation}
+			
+			A major problem with the decorrelator in this format is the continuous disturbance of the features in $Z_c$ during training.
+			As the correlation between $Z_c$ and $Z_r$ can be broken in both feature sets, $\mathcal{L}^Q_{cor}$ generates gradients which try to move the points around in a chaotic manner in $Z_c$.
+			Since the adversarial game does not define any target distribution for $Z_c$, this disturbance does not vanish, and is constantly present during training, in the worst cases causing $Z_c$ to collapse into a single point.
+			An obvious choice would be to impose a prior distribution on $Z_c$, the same way as the prior on $Z_r$, similarly how to some extent \ac{DCCS} does.
+			However, concluding from the experience gained in the \ac{SCA} work, priors on $Z_c$ don't work well in the autoencoder setting.
+			Instead to stop the disturbance from the adversarial game in $Z_c$, the backpropagation of the gradient from $\mathcal{L}^Q_{cor}$ is stopped through $Z_c$, so that the adversarial game does not affect those features.
+			This effect can be achieved in most deep learning frameworks with a simple detach() or stop\textunderscore gradient() call.
+			This gradient stop still allows the $Z_c$ features to be used by $D$ for the detection of correlation with $Z_r$, but the gradients only affect $Z_r$, leaving $Z_c$ undisturbed by the decorrelation.
+			
+			\begin{figure}[!ht]
+				\centering
+				\subfloat[$Z_r$ density]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mnist/zr_den.pdf}
+					\label{fig:enc_mnist_zr_den}
+				}
+				\subfloat[$Z_r$ ground truth]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mnist/zr_lab.pdf}
+					\label{fig:enc_mnist_zr_lab}
+				}\\
+				\subfloat[$Z_c$ density]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mnist/zc_den.pdf}
+					\label{fig:enc_mnist_zc_den}
+				}
+				\subfloat[$Z_c$ ground truth]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mnist/zc_lab.pdf}
+					\label{fig:enc_mnist_zc_lab}
+				}
+				\caption[Typical DANCE encoding of MNIST]{A typical \ac{DANCE} encoding of the MNIST dataset at the end of the \ac{DAN} pretraining. The top two figures depict how well $Z_r$ follows the $p_g$ Gaussian prior, as well as being completely decorrelated to $Z_c$. The bottom two figures show the irregular, but well separated encoding in $Z_c$.}
+				\label{fig:enc_mnist}
+			\end{figure}
+			
+			In theory, the \ac{DANCE} setup could lead to an encoding where both clustering and reconstructive information is communicated only through $Z_c$, and $Z_r$ does not carry any information at all, only capturing random noise in order to adhere to the $p_g$ prior.
+			In our experience this is never the case, as the autoencoder always tries to utilize all latent features. 
+			However, possibly for this reason, or because of saturation problems in $D$, \ac{DANCE} seems to work best if both $Z_c$ and $Z_r$ are of low dimensionality.
+			In Fig.~\ref{fig:enc_mnist}, a typical \ac{DANCE} encoding of the MNIST dataset can be seen, where both $Z_c$ and $Z_r$ are $2$-dimensional.
+			
+			The above detailed decorrelation does not guarantee that all clustering-relevant information ends up in $Z_c$, nor that all clustering-irrelevant information is removed from $Z_c$.
+			In reality, \ac{DANCE} reduces variance in $Z_c$, and allows for a more coherent mapping, where similar data points are close together, which is beneficial for a subsequent application of traditional clustering algorithms.
+			
+		\subsection{RIM Initialization and DEC Clustering}
+			\label{cha:decorr_ae:sec:rim_init_dec_clust}
+		
+			The internal clustering step in \ac{DANCE} is done with the mechanism from \ac{DEC}.
+			In its original form, \ac{DEC} uses the \kmeans{} algorithm to find initial positions for the cluster centroids.
+			We found this initialization to be quite unreliable, because \kmeans{} is biased towards convex, even-sized clusters by design, which is often not how the encoded clusters behave in \ac{DANCE}.
+			Instead, \ac{DANCE} uses the discriminative \ac{RIM} \cite{rim} algorithm to find a good initial clustering, which is then subsequently refined by \ac{DEC}.
+			
+			In \ac{RIM}, a simple feed-forward neural net is used to find clusters, by looking for cluster boundaries that are in sparsely populated regions of the input data space.
+			To achieve this, \ac{RIM} minimizes the conditional entropy, balanced by the maximization of the entropy of the label distribution, which helps to form clusters with even populations.
+			In effect, this optimization task maximizes the empirical estimate of the mutual information between data point and their assignment.
+			Let $I(\theta_i, z_c) : Z_c \rightarrow P$ denote the \ac{RIM} net, where $\theta_i$ are learnable parameters.
+			$I$ directly outputs cluster assignment probabilities for each input point.
+			To train the \ac{RIM} net, the following loss terms are minimized through stochastic gradient descent:
+			\begin{equation}
+				\label{eq:l_i_Cent}
+				\mathcal{L}^I_{cond.ent} = -\frac{1}{n} \sum_{i=1}^{n} \sum_{j=1}^{k} p_{ij}log(p_{ij}),
+			\end{equation}
+			\begin{equation}
+				\label{eq:l_i_Lent}
+				\mathcal{L}^I_{lab.ent} = \sum_{j=1}^{k} ( \frac{1}{n} \sum_{i=1}^{n} p_{ij} ) \times log(\frac{1}{n} \sum_{i=1}^{n} p_{ij}),
+			\end{equation}
+			\begin{equation}
+				\label{eq:l_i_rim}
+				\mathcal{L}^I_{rim} = \mathcal{L}^I_{cond.ent} + \mu\mathcal{L}^I_{lab.ent} + \lambda R(\theta_i),
+			\end{equation}
+			\noindent where $p_{ij}$ refers to the cluster assignments output by $I(\theta_i, z_c)$, $k$ refers to the number of clusters, $\mu$ is a balancing coefficient between the two entropy terms, and $\lambda$ is a balancing coefficient for the regularization term $R(\theta_i)$.		
+			For the $R(\theta_i)$ regularization term the $L_2$ norm of the parameters $\theta_i$ is used, also commonly referred to as weight decay.
+			
+			We found that the achieved conditional entropy at the end of the \ac{RIM} training is also a somewhat good indicator of the objective goodness of the clustering, removing the need to guess which initialization was the best (as mentioned in Sec.~\ref{cha:decorr_ae:sec:gen_clust_arg}).
+			To exploit this feature, $I$ is retrained multiple times for a fixed number of epochs, and select the training with the lowest $\mathcal{L}^I_{Cent}$ at the end.
+			The averages of the clusters in $Z_c$ found by this $I$ are then used as centroids to start the \ac{DEC} refinement.
+			Figure~\ref{fig:clust_mnist_rim_ass} shows the clusters and the subsequent cluster centroids defined by \ac{RIM} on the \ac{DANCE} encoded MNIST dataset.
+			
+			\begin{figure}[!ht]
+				\centering
+				\subfloat[\ac{RIM} initialization]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/clust_mnist/rim_ass.pdf}
+					\label{fig:clust_mnist_rim_ass}
+				}
+				\subfloat[\ac{DEC} refinement]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/clust_mnist/dec_ass.pdf}
+					\label{fig:clust_mnist_dec_ass}
+				}
+				\caption[RIM initialization and DEC refinement]{RIM initialization and DEC refinement on the encoded $Z_c$ (MNIST). The white dots represent the cluster averages (centroids), the coloration shows the cluster assignments.}
+				\label{fig:clust_mnist}
+			\end{figure}
+			
+			\ac{DEC} uses the initialized cluster centroids to influence the latent space in $Z_c$, by moving the encoded points closer to their assigned centroids, while simultaneously moving the centroids to best fit their assigned points \cite{dec}.
+			To do this, \ac{DEC} uses Student's $t$-distribution to define a soft-assignment between encoded points and cluster centroids.		
+			The encoded points and the centroids are then jointly moved to best fit a target distribution by minimizing the Kullback-Leibler divergence.
+			Because of the soft assignment, the \ac{DEC} optimization has a more pronounced effect on the encoded points closest to the centroids compared to more remote points, and vice versa; the centroids are moved to best fit the closest encoded points.
+			The \ac{DEC} loss is defined as:
+			\begin{equation}
+				q_{ij} = -\frac{ (1 + \|z_{c_i} - c_j\|^2/\alpha)^{-\frac{\alpha + 1}{2}} }{ \sum_{j'=1}^{k} (1 + \|z_{c_i} - c_j'\|^2/\alpha)^{-\frac{\alpha + 1}{2}} },
+			\end{equation}
+			\begin{equation}
+				p_{ij} = -\frac{ q_{ij}^2 / \sum_{i=1}^{n} q_{ij} }{ \sum_{j'=1}^{k} (q_{ij'}^2 / \sum_{i=1}^{n} q_{ij'}) },
+			\end{equation}
+			\begin{equation}
+				\label{eq:l_q_dec}
+				\mathcal{L}^Q_{dec} = \sum_{i=1}^{n} \sum_{j=1}^{k} p_{ij}log \frac{p_{ij}}{q_{ij}},
+			\end{equation}
+			\noindent where $c_j$ refers to cluster centroids, $\alpha$ is the degrees of freedom of the Student’s $t$-distribution, $q_{ij}$ is the soft assignment of the encoded points, and $p_{ij}$ is the auxiliary distribution.
+			During the \ac{DEC} clustering phase, the encoder loss expands to:
+			\begin{equation}
+				\mathcal{L}^Q = \mathcal{L}^{QQ'}_{rec} + \beta_{cor}\mathcal{L}^Q_{cor} + \beta_{dec}\mathcal{L}^Q_{dec},
+			\end{equation}
+			\noindent where $\beta_{dec}$ is an additional coefficient balancing the \ac{DEC} loss with the others.
+			
+			The \ac{DEC} loss tightly groups the encoded points around the centroids (Fig.~\ref{fig:clust_mnist_dec_ass}), which further refines the latent space by forcing the autoencoder to make ``decisions'' about where encoded points end up.
+			This tight grouping also compensates for the limitation of nearest-neighbor clustering, because the tight groups can be efficiently separated by linear boundaries (Voronoi tessellation).
+			Without this grouping, straight cluster boundaries often don't align with the correct distribution-boundaries, making nearest-neighbor clustering algorithms, especially \kmeans{}, ineffective in these cases.
+			
+			The complete \ac{DANCE} algorithm is shown on Alg.~\ref{alg:dance}.
+			The three main phases: \ac{DAN} pretraining, \ac{RIM} initialization and \ac{DEC} refinement can also be seen as overhauled versions of the original \ac{DEC} training steps, but we hope the reader agrees that the changes are significant enough to warrant a different algorithm name.
+			Although other works often refer to multi-phase methods in a negative light, we have found that the isolated phases are easier to debug or parameterize, not having to completely restart training if something is not perfect, which also helped during the evaluation of the algorithm.
+			
+			\begin{algorithm}[!ht]
+				\SetAlgoLined
+				\newcommand{\nosemic}{\SetEndCharOfAlgoLine{\relax}}   % Drop semi-colon
+				\newcommand{\dosemic}{\SetEndCharOfAlgoLine{\string;}} % Reinstate semi-colon
+				\newcommand{\pushline}{\Indp}                          % Indent
+				\newcommand{\popline}{\Indm\dosemic}                   % Undent
+				
+				\SetKwInput{Kw}{Input}			
+				\KwIn{Dataset $\mathcal{X} = \{x_i\}^N_{i=1}$, initial parameters $\theta_q$, $\theta_{q'}$, $\theta_d$, $\theta_i$ of encoder $Q$, decoder $Q'$, decorrelator $D$ and \ac{RIM} initializer $I$, nr. of dimensions $n_{Z_c}$, hyper-parameters $\sigma$, $\alpha$, $\mu$, coefficients $\beta_{cor}$, $\beta_{dec}$.}
+				
+				\SetKwFunction{encode}{autoencode}
+				\SetKwProg{proc}{Procedure}{}{}
+				\SetKwProg{pretrain}{DAN pretraining}{}{}
+				\SetKwProg{riminit}{RIM initialization}{}{}
+				\SetKwProg{dectrain}{DEC refinement}{}{}
+				
+				\proc{\encode{}}{
+					\nosemic Compute $z = Q(\theta_q, x)$, $x' = Q'(\theta_{q'}, z)$ and using\;
+					\pushline\dosemic these $\mathcal{L}^{QQ'}_{rec}$ (Eq. \ref{eq:l_qq_rec})\;
+					
+					\popline Generate $z' = z_c \oplus p_g(\sigma)$\;
+					
+					\nosemic Compute $d = D(\theta_{d}, z)$, $d' = D(\theta_{d}, z')$ and using\;
+					\pushline\dosemic these $\mathcal{L}^Q_{cor}$ (Eq. \ref{eq:l_q_cor}) and $\mathcal{L}^D_{cor}$ (Eq. \ref{eq:l_d_cor})\;
+				}
+				
+				\pretrain{}{
+					\For{$e_{pre}$ iterations}{
+						\encode{}\;
+						Update $\theta_d$ by minimizing $\mathcal{L}^D_{cor}$\;
+						\nosemic Update $\theta_q$, $\theta_{q'}$ by minimizing\;
+						\pushline\dosemic $\mathcal{L}^Q = \mathcal{L}^{QQ'}_{rec} + \beta_{cor}\mathcal{L}^Q_{cor}$ (Eq. \ref{eq:l_q})\;	
+					}
+				}
+				
+				\riminit{}{
+					Deconcatenate $z_c = Q(\theta_q, x) \ominus(n_{Z_c})$\;
+					\For{$n_{rim}$ tries}{
+						\For{$e_{rim}$ iterations}{
+							\nosemic Compute $p = I(\theta_i, z_c)$ and using\;
+							\pushline\dosemic it $\mathcal{L}^I_{rim}$ (Eq. \ref{eq:l_i_rim})\;
+							\popline Update $\theta_i$ by minimizing $\mathcal{L}^I_{rim}$\;
+						}
+						Compute $z = I(\theta_i, z_c)$ and using it $\mathcal{L}^I_{Cent}$ (Eq. \ref{eq:l_i_Cent})\;
+						Store $\theta_{i_{best}} = \theta_i$ if $\mathcal{L}^I_{Cent}$ is the lowest so far\;
+					}
+					Compute $a_{ij} = argmax(I(\theta_{i_{best}}, z_c))$ assignments\;
+					\For{$j = 1...k$}{
+						$c_j = {\sum_{i=1}^{n} z_{c_i}(a_{ij} == j)} / {\sum_{i=1}^{n} (a_{ij} == j)}$\;
+					}
+				}
+				
+				\dectrain{}{
+					\For{$e_{dec}$ iterations}{
+						\encode{}\;
+						Compute $\mathcal{L}^Q_{dec}$ (Eq. \ref{eq:l_q_dec}) using $z_c$, $c$\;
+						Update $\theta_d$ by minimizing $\mathcal{L}^D_{cor}$\;
+						\nosemic Update $\theta_q$, $\theta_{q'}$, $\mu$ by minimizing\;
+						\pushline\dosemic $\mathcal{L}^Q = \mathcal{L}^{QQ'}_{rec} + \beta_{cor}\mathcal{L}^Q_{cor} + \beta_{dec}\mathcal{L}^Q_{dec}$				
+					}
+				}
+				Compute $a_{i} = argmin((c_j - z_{c_i})^2 )$ final assignments\;
+
+				\caption[DANCE]{The DANCE algorithm.}
+				\label{alg:dance}
+			\end{algorithm}
+			
+		\subsection{Evaluation Methodology}
+			
+			Our ultimate goal was to evaluate \ac{DANCE} on a mobile network dataset, but in order to be able to compare the performance to other state-of-the-art methods with this dataset, we needed to have working implementations of the other algorithms.
+			As it would be an enormous undertaking to try to reimplement and evaluate every method listed in Sec.~\ref{cha:decorr_ae:sec:sota}, we have selected four methods to compare against, based on their performance, age, and their connection to our algorithm:
+			\begin{itemize}
+				\item \textbf{\ac{DEC}} is an obvious choice for an older generative algorithm, as \ac{DANCE} shares its internal clustering and the overall structure.
+				In both methods, the internal clustering influences the encoding.
+				\item \textbf{\ac{ACAI}} is a state-of-the-art generative clustering algorithm, which, contrary \ac{DEC} and \ac{DANCE}, develops the encoding independent from the internal clustering.
+				\item \textbf{\ac{IMSAT}} is one of the first discriminative algorithms, working without manual data augmentation for the regularization. \ac{IMSAT} builds on \ac{RIM}, which we also utilize in \ac{DANCE}.
+				\item \textbf{\ac{DCCS}} is our choice of a state-of-the-art discriminative algorithm.
+				In contrast to \ac{IMSAT}, \ac{DCCS} does use explicit data augmentation as regularization, and shares the core idea of separating clustering-relevant from clustering-irrelevant features with \ac{DANCE}.
+			\end{itemize}
+			\noindent Altogether, an even split of generative and discriminative deep clustering algorithms were chosen, as well as an even split between earlier and recent publications.
+			This aspect is important, because we suspected that older algorithms are by no means necessarily worse than newer publications on mobile network data, contrary to what the trend might show on image datasets.
+			
+			Another beneficial effect of having to reimplement contending methods is that we can control for neural net complexity in the evaluation.
+			Even in the few years since the first publication of these methods, the emergence of dedicated hardware accelerators, easy-to-use deep learning frameworks, and new type of components and training methods increased the possibility of training deep neural nets tremendously.
+			While newer publications use residual nets tens or even hundreds of layers deep, some older algorithms were evaluated using only a few simple fully-connected layers.
+			We suspected that the topological differences account for a large portion of the performance differences, and we were interested in understanding how the algorithms differ in performance when using the same neural net components and sizes.
+			Thus, in the following evaluation, all methods use the same convolutional encoder, convolutional decoder and fully-connected adversarial nets (per dataset).
+			
+			All methods were trained multiple times ($8$) for each dataset, to be able to present worst, average and peak performance metrics.
+			Of course, not having invented and exhaustively fine-tuned these methods, we likely can not utilize them to their utmost potential, and probably left a few percentage points of accuracy on the table.
+			On the other hand, the usability and applicability of an algorithm is just as important as peak performance.
+			These facts should be kept in mind while reading the following sections.
+			
+		\subsection{Evaluation on Image Data}
+			
+			To give a performance comparison in a common setting, and to establish that our implementations are working correctly, the methods were first evaluated on the MNIST image dataset.
+			This enables the comparison of \ac{DANCE} to other state-of-the-art algorithms' performance as originally published.
+			Furthermore, this evaluation allows to see if older algorithms show improved performance over their published results when using our deeper convolutional nets.
+			The performance of the compared methods can be seen in Tab.~\ref{tab:mnist_perf}.
+			The (external) metrics utilized throughout this evaluation are:
+			\begin{itemize}
+				\item \textbf{\ac{ACC}}, which measures the ratio between number of points correctly assigned against the number of all datapoints in the dataset.
+				As the mapping between labels and clusters is ambiguous, we used the Hungarian method \cite{hungarian} to determine the best mapping/permutation, thus making the metric permutation-invariant.
+				\item \textbf{\ac{NMI}}, which measures the mutual information between labels and cluster assignments.
+				\ac{NMI} is normalized so that $0$ means no mutual information, while $1$ is the maximal mutual information achievable.
+			\end{itemize}
+			
+			% ACC
+			%		            avg       std       min       max
+			%		dec    0.938525  0.044609  0.888186  0.989814
+			%		acai   0.952505  0.039954  0.848229  0.977414
+			%		imsat  0.986557  0.003914  0.977586  0.990414
+			%		dccs   0.949024  0.043283  0.876000  0.982886
+			%		dance  0.962545  0.015867  0.936771  0.980629
+			
+			% NMI
+			%		            avg       std       min       max
+			%		dec    0.931318  0.030645  0.892844  0.970573
+			%		acai   0.917131  0.020331  0.868879  0.939540
+			%		imsat  0.962866  0.006089  0.950979  0.970955
+			%		dccs   0.933750  0.028217  0.884726  0.958613
+			%		dance  0.924860  0.018719  0.896560  0.948309		
+			
+			\begin{table}[!ht]
+				\centering
+				\renewcommand{\arraystretch}{1.25}
+				\begin{tabular}{l|c|c|c}
+					& \multicolumn{2}{c|}{ACC}                     & NMI \\
+					\cline{2-4}
+					Alg.       & avg ($\pm$std)         & min - max           & avg ($\pm$std) \\
+					\hline
+					\ac{DEC}   & $0.9385$ ($\pm0.045$) & $0.8882$ - $0.9898$ & $0.9313$ ($\pm0.031$) \\
+					\ac{ACAI}  & $0.9525$ ($\pm0.040$) & $0.8482$ - $0.9774$ & $0.9171$ ($\pm0.020$) \\
+					\ac{IMSAT} & $\mathbf{0.9866}$ ($\pm0.004$) & $\mathbf{0.9776}$ - $\mathbf{0.9904}$ & $\mathbf{0.9629}$ ($\pm0.006$) \\
+					\ac{DCCS}  & $0.9490$ ($\pm0.043$) & $0.8760$ - $0.9829$ & $0.9338$ ($\pm0.028$) \\
+					\ac{DANCE} & $0.9625$ ($\pm0.016$) & $0.9368$ - $0.9806$ & $0.9249$ ($\pm0.019$) \\
+				\end{tabular}
+				\caption[Re-evaluated deep clustering algorithm performance on MNIST]{Performance of the evaluated algorithms on the MNIST dataset.}
+				\label{tab:mnist_perf}
+			\end{table}
+			
+			The two generative algorithms, \ac{DEC} and \ac{ACAI} exhibit large standard deviation in accuracy and mutual information, which can be attributed to the inconsistency of the traditional clustering algorithms in this setting; \kmeans{} cannot reliably find the true clusters in the encoding, and often converges to local minima, arriving at sub-optimal fits.
+			
+			Apart from this, \ac{DEC} performed quite a lot better than the originally published results (shown in Tab.~\ref{tab:sota_perf}) using our deeper encoder and decoder.
+			It is especially important to note the impressive maximum accuracy, which is by far the best out of any reconstructive algorithm.
+			Also quite interesting is the relatively high \ac{NMI} achieved compared to the \ac{ACC}, which represents a high mutual information content between ground truth labels and cluster assignments.
+			This phenomenon occurs when wrongly clustered observations have a systematic error.
+			In the MNIST dataset, an example of such a systematic error would be that the cluster containing all $9$s also includes a few $7$s, but not any other numbers.
+			
+			The \ac{ACAI} results are a little worse than the originally published results in Tab.~\ref{tab:sota_perf}.
+			This is not a mistake or misconfiguration on our part; in the original paper the authors themselves admit to selecting the best \kmeans{} clustering based on \textit{external} metrics (using the ground truth), reasoning that the \ac{ACAI} algorithm was anyway not originally intended for clustering, and that the shown results are only there to signify the potential of such an approach \cite{acai}.
+			In order to provide a fair and unsupervised comparison of the algorithms, we selected the best out of repeated \kmeans{} fits using an \textit{internal} metric (not utilizing the ground truth) in our evaluation, hence the worse results.
+			
+			\ac{IMSAT} performed phenomenally, even improving on the already excellent originally published results and coming close to the published performance of \ac{DCCS}.
+			Of note is the very low deviation, and high minimum values, which is a nice guarantee for the user that even in the worst case the clustering is almost the best it can be.
+			This trust would be very important for unsupervised algorithms, as the user has no way of confirming the quality of the clustering in a real-life scenario.
+			
+			\ac{DCCS}, on the other hand, proved quite sensitive to the net topology, and performed worse than the published performance in Tab.~\ref{tab:sota_perf}.
+			We were definitely able to reproduce the originally published results using the proposed net, but switching to our more complex topology caused \ac{DCCS} to learn sub-optimal fits, where often one or more of the clusters were left unused (unpopulated).
+			We tried rectifying this through changing the balance of the prior loss, as well as adding batch-normalization layers to $Z_c$, but to no avail.
+			It seems to us that the net complexity plays a major role for \ac{DCCS} in inherently regularizing the model, and more complex nets are not regularized sufficiently with only the additional mechanism in \ac{DCCS}.
+			This is very counter-intuitive, as all the other algorithms benefited from the increased modeling capability of the more complex neural net used.
+			
+			Our \ac{DANCE} algorithm performed as expected; excellent for a generative clustering method, yet not in the range of most discriminative methods' capabilities.
+			Compared to the published values shown in Tab.~\ref{tab:sota_perf}, \ac{DANCE} is among the best performing generative approaches on the MNIST dataset.
+			The quite high minimum accuracy metric is particularly impressive, which again could play a major role in establishing trust towards the algorithm.
+			It seems most of the loss in accuracy stems from malformed latent representations, where parts of a class ends up separated, far away from most of the points in the same class.
+			This effect could be possibly mitigated by utilizing more dimensions for $Z_c$, but in our experience the gain in consistency is counteracted by the loss in performance both from the decorrelation and from the \ac{RIM} initialization, negating any benefit.
+			
+			Lastly, our goal with this evaluation was to tune most of the hyper-parameters of the algorithms, and apart from the net topologies, reuse these settings in the mobile data evaluation.
+			However, the difference between the two domains caused the hyper-parameters to be very sub-optimal for the network dataset, so in the end we allowed the tuning of some parameters based on internal metrics, such as balancing losses, or adjusting learning rates.
+			These changes could be reasonably made without the knowledge of the ground truth, in order to stay within the bounds of a realistic clustering scenario.
+			Furthermore, every algorithm has seen increased training iterations to compensate for the smaller dataset, resulting in less updates per epoch.	
+			
+		\subsection{Evaluation on Mobile Network Data}
+			
+			\begin{table}[!ht]
+				\centering
+				\renewcommand*{\arraystretch}{1.25}
+				\begin{tabular}{l|c|c|c|c}
+					& Label        & Traffic   & Speed [km/h] & Movement \\
+					\hline
+					$0$ & Stationary 1 & FTP  & $0$          & -       \\
+					$1$ & Stationary 2 & VoIP & $0$          & -       \\
+					$2$ & Stationary 3 & HTTP & $0$          & -       \\
+					$3$ & Pedestrian 1 & FTP  & $8$          & random  \\
+					$4$ & Pedestrian 2 & VoIP & $8$          & random  \\
+					$5$ & Pedestrian 3 & HTTP & $8$          & random  \\
+					$6$ & Vehicular 1  & VoIP & $10$ - $100$ & streets \\
+					$7$ & Vehicular 2  & HTTP & $10$ - $100$ & streets \\
+				\end{tabular}
+				\caption[User groups in the DANCE mobile network dataset]{User groups in the mobile network dataset.}
+				\label{tab:user_groups}
+			\end{table}
+			
+			The evaluation on mobile network data represents the target clustering scenario for our algorithm, which also tests the other algorithms' flexibility towards different application domains.
+			The evaluation poses a similar task to the common problem in the use cases introduced in Sec.~\ref{cha:decorr_ae:sec:clust}: the clustering of behavioral patterns.		
+			In our evaluation, each clustering algorithm were to assign mobile users to groups using information that implicitly describes their behavior, in this case based on how they use the network, and what they use it for.
+			
+			In order to generate data where the ground truth is known, a mobile network simulator was used, which enabled the use of the usual external metrics in the evaluation.
+			The simulation scenario was set in the city of Helsinki, where mobile users moved around and used the multi-layer heterogeneous network to communicate (Fig.~\ref{fig:sim_scenario}).
+			The network comprised of multiple macro, micro and WiFi cells (access points), and covered most of the city.
+			The users were allocated into $8$ user groups, which were differentiated based on the user's mobility patterns (stationary, pedestrian, vehicular) and their network usage type (talking using \ac{VoIP}, web-browsing using \ac{HTTP} and transferring files using \ac{FTP}).
+			The definitions of the user groups can be seen in Tab.~\ref{tab:user_groups}.
+			
+			\begin{figure}[!ht]
+				\centering
+				\includegraphics[width=\linewidth]{figures/07_decorr_ae/sim/sim.pdf}
+				\caption[Excerpt from the Helsinki simulation scenario in the DANCE evaluation]{Excerpt from the Helsinki simulation scenario.}
+				\label{fig:sim_scenario}
+			\end{figure}				
+			
+			The collected data contained:
+			\begin{itemize}
+				\item \textbf{Application} level \acp{KPI} such as downlink and uplink throughput.
+				\item \textbf{Radio quality} indicators, such as \ac{CQI}, \ac{SNR}, scheduling delay and \ac{RSRP}.
+				\item \textbf{\ac{RRC}} state indicators, such as connected, \ac{RLF} and idle states.
+			\end{itemize}
+			\noindent A total of $17$ \acp{KPI} were collected every $5$ seconds for every user.
+			The simulation contained $400$ users, an even distribution of $50$ users from each of the $8$ user groups.
+			Each user was observed for $10$ consecutive sequences, with a sequence consisting of $256$ time steps, in total corresponding to about $3.5$ hours of simulation time.
+			The collected data was organized into an array with the shape of $4000 \times 256 \times 17$, which is functionally the same as $256 \times 1$ pixel images containing $17$ channels (instead of the usual $3$: red, green and blue).
+			The clustering algorithms processed this data using $1$-dimensional convolutional encoders (and decoders).
+			The resulting performances can be seen on Tab.~\ref{tab:mobile_perf}.
+			
+			% ACC
+			%		            avg       std       min       max
+			%		dec    0.740937  0.019501  0.70325   0.75950
+			%		acai   0.762875  0.036876  0.71550   0.83450
+			%		imsat  0.477531  0.072101  0.37475   0.57150
+			%		dccs   0.841594  0.054715  0.75400   0.90825
+			%		dance  0.892312  0.041023  0.81250   0.93050
+			
+			% NMI
+			%		            avg       std       min       max
+			%		dec    0.836507  0.009832  0.820862  0.850457
+			%		acai   0.843782  0.017038  0.805688  0.859355
+			%		imsat  0.530739  0.048521  0.472977  0.599020
+			%		dccs   0.833281  0.042579  0.747575  0.892312
+			%		dance  0.882551  0.034942  0.817431  0.914490
+			
+			\begin{table}[!ht]
+				\centering
+				\renewcommand{\arraystretch}{1.25}
+				\setlength\tabcolsep{4pt}
+				\begin{tabular}{l|c|c|c}
+					& \multicolumn{2}{c|}{ACC}                     & NMI \\
+					\cline{2-4}
+					Alg.       & avg ($\pm$std)         & min - max           & avg ($\pm$std) \\
+					\hline
+					\ac{DEC}   & $0.7409$ ($\pm0.021$) & $0.7033$ - $0.7595$ & $0.8365$ ($\pm0.010$) \\
+					\ac{ACAI}  & $0.7629$ ($\pm0.040$) & $0.7155$ - $0.8345$ & $0.8438$ ($\pm0.017$) \\
+					\ac{IMSAT} & $0.4775$ ($\pm0.072$) & $0.3748$ - $0.5715$ & $0.5307$ ($\pm0.049$) \\
+					\ac{DCCS}  & $0.8416$ ($\pm0.055$) & $0.7540$ - $0.9083$ & $0.8333$ ($\pm0.043$) \\
+					\ac{DANCE} & $\mathbf{0.8923}$ ($\pm0.041$) & $\mathbf{0.8125}$ - $\mathbf{0.9305}$ & $\mathbf{0.8826}$ ($\pm0.035$) \\
+				\end{tabular}
+				\caption[Deep clustering algorithm performance on the DANCE mobile network dataset]{Performance of the evaluated algorithms on the mobile network dataset.}
+				\label{tab:mobile_perf}
+			\end{table}
+			
+			\ac{DEC} and \ac{ACAI}, the two generative algorithms show low average and peak performance, even in the lucky training cases with good \kmeans{} fits.
+			This can be attributed to the large amount of clustering-irrelevant information in the latent representation.
+			The clusters formed by \kmeans{} and the \ac{DEC} mechanism ultimately incorporate this irrelevant information, which, in many instances, causes the encoded points to end up in the wrong cluster.
+			On the other hand, the regularization through reconstruction seems to function well, as the deviation in accuracy for these algorithms is comparatively lower than the others.
+			
+			\ac{IMSAT} was not successful on the mobile network dataset, producing abysmal results.
+			Originally, \ac{IMSAT} was chosen because contrary to being a discriminative algorithm, it did not utilize any domain-specific regularization methods such as image-transformations, rather, the regularization was done through the \ac{SAT} mechanism.
+			\ac{SAT} disturbs the data on-the-fly during training, in a seemingly domain-agnostic manner, however, in order to calibrate the disturbance imposed by \ac{SAT}, \ac{IMSAT} uses a precalculated value $\epsilon$ for every datapoint.
+			For the MNIST dataset, these $\epsilon$ values are the Euclidean distances between datapoints and their $10^{th}$ closest neighbors (calculated in the original data-space, each pixel is a separate dimension).
+			The same calibration value calculated on the mobile network dataset does not seem to work well, for the reason being that the Euclidean distance is simply not that meaningful for our dataset as it is for MNIST, or images in general.
+			The large variance in the position of important patterns in the sequences, caused by the arbitrary sequence framing, creates a large distance between even the same patterns shifted in time.
+			We have tried to tune which neighbor to use for the $\epsilon$ calculation, but have seen no significant improvement.
+			The bad performance could also be an indication of a mismatch in data complexity and the used neural net topologies, although the other algorithms are proof that the nets were at least capable of producing good results, if not optimal.
+			
+			\ac{DCCS} was the second most accurate algorithm on the mobile network dataset.
+			\ac{DCCS} uses randomized data augmentation to separate ``categorical'' features from ``style'' features.
+			These data augmentations are commonly used image transformations for the MNIST dataset: zooming, aspect ratio changes, brightness, hue and saturation changes.
+			Zooming was quite straight-forward to implement for the mobile network dataset, and one could argue that such variation is probably present in the data: zooming in the temporal dimension is the equivalent of processes taking longer or shorter times, which manifests as the expansion or contraction of the generated patterns in the data.
+			Aspect ratio changes do not apply to the mobile network dataset, as it behaves as an ``image'' which is a single pixel tall.
+			We replaced value variations (brightness, hue and saturation changes) with a randomized offset and scaling on individual channels, tuning the parameters on the MNIST dataset to produce visibly similar images to the originally proposed image transformations.
+			It seems that these augmentations were adequate for the mobile network dataset, as \ac{DCCS} proved to be quite accurate in its clustering.
+			A fine-tuned net topology, as well as better tuned augmentations could further improve the performance of \ac{DCCS}, however, specifically this type of tuning is not possible if the user has only an unlabeled dataset available, the main premise of unsupervised learning.
+			
+			\ac{DANCE} performed the best on the mobile network dataset, reaching the highest average, maximum, and most importantly the highest minimum accuracy.
+			Our algorithm did not require hyper-parameter changes apart from changing $\beta_{cor}$; because of a higher reconstruction loss on the mobile network dataset, this balancing coefficient had to be increased in order for the decorrelator to have an effect on the encoding.
+			This tuning can be done without any labeled data, solely by making sure that the decorrelator adversary converges close to $50\%$ accuracy (random guessing) when choosing between $Z$ and $Z'$ at the end of the training.
+			A scatter-plot of the encoded datapoints and clustering can be seen in Fig.~\ref{fig:enc_mobile}.
+			In order to further explore how this performance is achieved in \ac{DANCE}, an ablation study was performed.
+			
+			\begin{figure}[!ht]
+				\centering
+				\subfloat[$Z_r$ ground truth]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mobile/zr_lab.pdf}
+					\label{fig:enc_mobile_zr_lab}
+				}
+				\subfloat[$Z_c$ ground truth]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mobile/zc_lab.pdf}
+					\label{fig:enc_mobile_zc_lab}
+				}\\
+				\subfloat[$Z_c$ density]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mobile/zc_den.pdf}
+					\label{fig:enc_mobile_zc_den}
+				}
+				\subfloat[\ac{RIM} initialization]{
+					\includegraphics[width=0.45\linewidth]{figures/07_decorr_ae/enc_mobile/rim_ass.pdf}
+					\label{fig:enc_mobile_rim_ass}
+				}
+				\caption[Typical DANCE encoding of the mobile network dataset]{A typical DANCE encoding of the mobile network dataset. The top two figures depict how well $Z_r$ follows the uncorrelated $p_g$ prior, as well as how well the ground truth classes separate in $Z_c$. The bottom two figures show the density of the encoded, points, and how well \ac{RIM} was able to find/determine the initial cluster centroids.}
+				\label{fig:enc_mobile}
+			\end{figure}
+		
+		\subsection{Short Ablation Study}
+			
+			It is important to see how much each of the \ac{DANCE} components contribute to the overall performance, which also helps in understanding the synergies between them.
+			The following ablation study examines every combination of the $3$ components evaluated on the mobile network dataset: the \ac{DAN}, the \ac{RIM} initialization and the \ac{DEC} cluster refinement.
+			Without the \ac{DAN}, the autoencoder and the internal clustering steps worked in a single latent space, which was set to have the combined dimensionality of $Z_c$ and $Z_r$, resulting in $4$ dimensions.
+			In the absence of \ac{RIM}, \kmeans{} was used to find the initial cluster centroids for \ac{DEC}.
+			If \ac{DEC} was not used either, only \kmeans{} determined the final clustering.
+			The results from the ablation study can be seen on Tab.~\ref{tab:ablation_perf}.
+			
+			\begin{table}[ht]
+				\centering
+				\renewcommand{\arraystretch}{1.25}
+				\setlength\tabcolsep{4pt}
+				\begin{tabular}{c|c|c|c|c}
+					\multicolumn{3}{c|}{}       & \multicolumn{2}{c}{ACC} \\
+					\cline{4-5}
+					\ac{DAN}        & \ac{RIM}        & \ac{DEC}        & avg ($\pm$std)                 & min - max  \\
+					\hline
+					&                 &                 & $0.7135$ ($\pm0.0290$)         & $0.6518$ - $0.7515$ \\
+					& $\surd$         &                 & $0.7295$ ($\pm0.0477$)         & $0.6375$ - $0.7775$ \\
+					\hlone{}        & \hlone{}        & \hlone{$\surd$} & \hlone{$0.7475$ ($\pm0.0391$)} & \hlone{$0.6720$ - $0.7985$} \\
+					& $\surd$         & $\surd$         & $0.7598$ ($\pm0.0400$)         & $0.6845$ - $0.8010$ \\
+					\hline        
+					$\surd$         &                 &                 & $0.7645$ ($\pm0.0665$)         & $0.7010$ - $0.9270$ \\
+					$\surd$         & $\surd$         &                 & $0.8648$ ($\pm0.0396$)         & $0.7850$ - $0.9120$ \\
+					$\surd$         &                 & $\surd$         & $0.7823$ ($\pm0.0615$)         & $0.7145$ - $0.9255$ \\
+					\hltwo{$\surd$} & \hltwo{$\surd$} & \hltwo{$\surd$} & \hltwo{$0.8923$ ($\pm0.0410$)} & \hltwo{$0.8125$ - $0.9305$} \\
+				\end{tabular}
+				\caption[DANCE ablation study]{The effect of the different DANCE components on performance measured on the mobile dataset.}
+				\label{tab:ablation_perf}
+			\end{table}
+			
+			Without any of the $3$ components, the algorithm is simply \kmeans{} run on an autoencoder-formed latent encoding.
+			This setup is often used as a baseline for deep clustering, with the premise that the algorithm should greatly improve upon these results.
+			Using \ac{RIM} instead of the \kmeans{} clustering does not bring tangible benefits, probably because the irrelevant information in the latent encoding hides the otherwise sparsely populated cluster boundaries \ac{RIM} is looking for.
+			Using \ac{DEC} with a \kmeans{} initialization is basically the originally proposed \ac{DEC} algorithm (highlighted with light blue), however, the results are a little worse than in the previous evaluation (Tab.~\ref{tab:mobile_perf}), because in this case \ac{DEC} is operating with a lower dimensional latent space.
+			Adding \ac{RIM} as an initialization for \ac{DEC} once again does not improve performance meaningfully, for the same reason \ac{RIM} was not greatly beneficial by itself.
+			
+			Using \ac{DAN} and clustering with \kmeans{} only in $Z_c$ already improves the average accuracy as much as the other two components combined, but more importantly improves peak accuracy by a great margin.
+			This is because the decorrelated encoding in $Z_c$ maps clusters in a compact manner, without many datapoints mixed into wrong clusters.
+			\kmeans{}, though unreliably, sometimes fits these clusters well, resulting in high peak accuracy.
+			Using \ac{RIM} instead of \kmeans{} for clustering greatly improves minimum and average accuracy, because \ac{RIM} is able to find the sparse cluster boundaries in $Z_c$, which stand out without most of the clustering-irrelevant information.
+			Not using \ac{RIM} but using \ac{DEC} once again loses these benefits, only retaining the high peak accuracy achieved through the \ac{DAN} decorrelation.
+			Finally, with all components combined, we arrive at the complete \ac{DANCE} algorithm (highlighted with dark blue), where \ac{DEC} is able to exert its full benefits on the clustering, improving worse and average accuracy by quite a significant margin without losing its capability to maximize peak accuracy.
+			
+		\subsection{Conclusion}
+			
+			This chapter discussed state-of-the-art deep clustering algorithms, splitting them into two groups: generative and discriminative methods.
+			Although discriminative methods seem to be the peak performers in image clustering, their highly tuned nature and assumptions about the data make them hard to apply to mobile network data.
+			Reasoning that generative algorithms seem to be more domain-agnostic, we have proposed our own generative deep clustering algorithm, \ac{DANCE}, with the core idea of isolating clustering-relevant features in the latent space.
+			\ac{DANCE} and other state-of-the-art algorithms' performance was evaluated on an image- and a mobile network dataset, while also providing an ablation study to highlight the significance of the different components of our algorithm.
+			\ac{DANCE} achieved good performance on the image dataset, and excellent performance on the mobile network dataset, surpassing its competitors by a sizable margin.
+			
+			In real-world applications, clustering algorithms require a great deal of expertise to use. 
+			In the hands of a less experienced user, or somebody who does not have the resources, time, or a labeled dataset to fine-tune these algorithms for the specific use case, simplicity, usability and reliability play a far bigger role than peak performance in the overall usefulness of the algorithm.
+			
+			As a closing remark, I would like to highlight the shared idea between \ac{DCCS} and our \ac{DANCE} algorithm; the concept of separating latent features into clustering-relevant and clustering-irrelevant sets.
+			Although both implementations show various advantages and disadvantages in different data domains, at the least we can say that the concept itself is very promising, and could be an interesting topic for future research.		
+
+			

@@ -1,0 +1,92 @@
+\chapter{Summary of Research on Exemplification}
+	\label{cha:sum_exemplification}
+		
+	This part of the thesis has discussed the machine intuition process of exemplification: the act of defining a vocabulary of descriptive example observations, and using these examples to represent multiple observations, in order to effectively convey information in a dense, but easily understandable format.
+	Quantization algorithms realize this process in the \ac{ML} format, by partitioning training data points into a finite number of partitions (quanta) around centroid points, which act as the representative example, the prototype of each quantum.	
+	These centroid-based quantization algorithms have $2$ important characteristics that make them fight the curse of dimensionality: 1) the quanta formed are independent from the number of dimensions in the input data, and 2) the quanta ``stick'' to the areas of the input space which are populated, thus not wasting modeling capacity on possibly never used combination of values.
+	The mitigation of the curse of dimensionality is quite important in the mobile network management setting, as large-scale mobile network data is quite varied, potentially containing hundreds or even thousands of \acp{KPI} as separate dimensions, many of which should be taken into account in decisions in accordance to the \ac{CAN} concept of cognitive functions.
+	
+	The most known example of centroid-based quantization is the \kmeans{} algorithm.
+	This algorithm uses the \ac{EM} iterative optimization method, where the centroids are moved to mean of the quanta in each iteration.
+	This makes \kmeans{} quite sensitive to the distribution/density of the data points: many smaller quanta gather around densely populated parts of the input space, while sparsely populated parts are only covered by a few large quanta.
+	This results in a large variance in the maximum distance between centroids and data points -- which is also the error in the representation of individual observations by the prototype -- what we refer to as quantization error.
+	The large variance is not beneficial for tasks where the quantization is used in a ``mapping'' quality, such as data exploration, or anomaly detection, as it can be misleading for the user, or hide anomalous points.
+	Our contribution to quantization is the \ac{BSQ} algorithm, which changes this behavior, by modifying how the centroids are updated each iteration, resulting in a quantization that strives for equal maximum quantization error -- equal volume -- between quanta.
+	The distribution-free nature of \ac{BSQ} lends itself well to mapping tasks in mobile networks.
+	\ac{BSQ} was evaluated on real mobile network data, and has proved to realize the equal volume quantization well.
+	
+	In the exemplification capacity, \ac{BSQ} was proposed to be used as a means of knowledge sharing between \acp{CF}.
+	In this concept, the expert knowledge (labeling) was to be communicated and refined between \acp{CF} deployed in somewhat different contexts, or ones that experience different effects on/in the network.
+	Such a knowledge sharing method is important in anomaly detection scenarios, where observations of anomalies are few and far between, and every effort needs to be taken to build a larger database, which can then be used for the training of automated anomaly detection systems.
+	
+	A downside of our \ac{BSQ} implementation was the relatively long training time compared to \kmeans{}.
+	While the problem \ac{BSQ} solves is inherently a more complex one, thus imposing a higher algorithmic complexity and worse scaling than \kmeans{} on any possible implementation, we tried to mitigate this problem in two ways.
+	First, an alternative of \ac{BSQ} was proposed, called \ac{BBQ}, which uses a simpler calculation for the update of the centroids in each iteration, in order to approximate the behavior of \ac{BSQ} with much less calculation.
+	We have shown that this approximation, although potentially infinitely bad with enough dimensions, actually converges to an acceptably low approximation error on real-life datasets.
+	Secondly, we have proposed an implementation of \ac{BSQ}, which replaces the \ac{EM} optimization with a neural-network-style \ac{SGD}, which lowers the algorithmic complexity, as well as allowing for the use of dedicated hardware accelerators for further speedup.
+	The evaluation using mobile network data showed that the theoretical speedup is also present in practice, and makes \ac{BSQ} in some cases as fast as the \kmeans{} algorithm.
+	An (intended) side-effect of this implementation is that \ac{BSQ} also integrates better into neural nets, which how it is mostly used in the rest of our work.
+	
+	While the centroid-based quantization methods effectively avoid the curse of dimensionality up to a few tens of dimensions, they cannot work with the hundreds or thousands of dimensions of data the \ac{CAN} concept would utilize them for.
+	To rectify this, in the \ac{EMA} module of the \ac{CAN} architecture, a feature extraction step precedes the quantization, which is there to map the many-dimensional input into a fewer-dimensional latent space, while also removing redundancy and noise from the data.  
+	This feature extraction is proposed to be realized by an autoencoder neural net.
+	We have evaluated the \ac{EMA} concept on simulated network data, where the information contained aggregated \acp{KPI} from cells in the network.
+	In our evaluation, we have shown that the feature extraction and the quantization can be done effectively, so that the ground truth -- in this case groups in the data -- is captured correctly, without quanta containing too many points from different groups.
+	The conclusion of our research was that the feature extraction has to be done explicitly so that it forms a latent representation which is well-aligned for the subsequent quantization step.
+	The best performing algorithm in this regard was \ac{ACAI}, which achieves this alignment by imposing additional constraints on the latent space while the autoencoder is trained.
+	This approach is prevalent in deep clustering methods, which are the focus of the next part of this thesis.
+	
+	\section{Assessment of Feasibility (A1.1)}
+	
+		Exemplification can be realized effectively with centroid-based quantization algorithms.
+		The centroids act as the examples/prototypes, which contain the values that describe the average of each quanta. 
+		Centroid-based quantization algorithms use measures of distance in their training and inference, both to position the centroids as well as to partition space.
+		The most often used distance is the $L_2$ or Euclidean distance, probably because of its intuitive nature to us humans, however, it might not be applicable to all use cases.
+		The ``meaning'' of the quantization changes greatly with different distance measures: a distance measure must be selected which best represents the difference between data points according to the use case.
+		Furthermore, distances are greatly affected by the scaling of dimensions, thus, care must be taken when normalizing the data, as the different scaling of input features can emphasize/suppress the representation of individual features in the quantization.
+		
+		The distance between the centroids and the data points -- the quantization error -- also serves as a measure of the error in the representation when using the centroids as prototypes.
+		All of these algorithms require the meta-parameter $k$ -- the number of quanta -- which has to be set by the user.
+		The quantization error monotonously decreases with increasing $k$, which is fortunate, as the goal is usually to arrive at a ``fine-enough'' quantization that achieves a quantization error below a certain threshold.
+		This means that $k$ only has an effective lower bound for most uses, which can be greatly overestimated without hurting performance, thus making the ``guessing'' of the correct $k$ forgiving for most of the tasks.
+		
+	\section{Assessment of Practicality (A1.2)}
+		
+		Centroid-based quantization algorithms are quite light-weight: while the training (such as in the case of \ac{BSQ}) can take a few minutes, this is orders of magnitudes faster than some of the \ac{DL} methods we will be discussing later in the thesis.
+		Inference is very fast thanks to the simple nearest-neighbor partitioning logic most of the algorithms utilize.
+		In terms of data need, quantization algorithms are quite simple models (once again compared to \ac{DL} methods), thus do not require an exorbitant amount of data to avoid overfitting.
+		These qualities make them easily applicable in network automation tasks.
+		
+		While the algorithms' training and inference time scales with the number of quanta used in the quantization, this scaling is at most linear.		
+		The algorithms also scale with the dimensionality of the data.
+		This can be problematic, as it not only slows down training and inference, but can also break the intended functioning of the distance measures (curse of dimensionality).
+		To avoid this, the quantization can be preceded by a feature extraction step which maps the data to a lower-dimensional latent space.
+		A more computation-heavy \ac{DL}-based feature extraction used as preprocessing can compromise this practicality.
+		However, although the feature extraction might be influenced to better align to the quantization, the two algorithms do not need to be trained together.
+		Thus, if possible, the (re-)training of the feature extraction model can be skipped or a global model used, and only the quantization can be (re-)run on context-specific or newly collected datasets, in order to increase accuracy or to avoid model aging in local, changing contexts.	
+		
+	\section{Assessment of Applicability (A1.3)}
+	
+		Exemplification helps many problems by simplifying the models required, which is achieved through the discretized representation of the data.
+		Where without exemplification, a complex problem might require a system which reacts to infinitely many possible combination of inputs, a discretized formulation requires the solution for maybe a handful of discrete cases, with the tradeoff of accuracy lost in the quantization process.
+		If the problem itself allows for such a loss of accuracy, discretization can offer a number of benefits.
+		Discretized functions avoid a lot of modeling complexity, because they can be realized as a simple mapping between inputs and outputs, such as a lookup-table.
+		Discretized communication, the focus of this discussion, also aims to avoid the communication of a lot of information if both sides are capable of encoding and decoding messages through a ``vocabulary''.
+		This is especially important in mobile networks, where the network automation overhead should be kept minimal in order to not consume the limited resources of the network. 
+		Furthermore, humans naturally work well with examples.
+		In many cases, even the design of systems and algorithms is helped a lot by exemplification, as it is much easier for the designer to conceptualize or visualize the behavior of in discretized fashion, such as a network state model.
+				
+		Exemplification through quantization can be used in ``manual'' mobile network automation tasks, such as data exploration.
+		In these tasks, the goal is to describe the space the data occupies without necessarily paying much attention to the distribution of the data.
+		In these cases, our proposed \ac{BSQ} algorithm works quite well, behaving more intuitively than its \kmeans{} counterpart.
+		However, our main goal with the utilization of quantization algorithms was to facilitate effective communication between cognitive functions.
+		These tasks -- such as knowledge sharing or the \ac{EMA} concept -- is not simply helped by, but enabled by quantization.
+		In these tasks, the goal of the quantization is the minimization of the (average) quantization error, and thus the minimization of the error in the representation by the prototypes, which can be achieved through following the data distribution.
+		Thus, in these tasks, the original \kmeans{} algorithm has a good reason to perform better than \ac{BSQ}, if other external factors, such as the feature selection preprocessing step works as intended.	
+	
+
+		
+
+			
+
+		
